@@ -87,6 +87,7 @@ def _generate_horizontal_text(
 
     space_width = int(get_text_width(image_font, " ") * space_width)
 
+    print(f"Text: {text}")
     if word_split:
         splitted_text = []
         for w in text.split(" "):
@@ -130,7 +131,8 @@ def _generate_horizontal_text(
         rnd.randint(min(stroke_c1[1], stroke_c2[1]), max(stroke_c1[1], stroke_c2[1])),
         rnd.randint(min(stroke_c1[2], stroke_c2[2]), max(stroke_c1[2], stroke_c2[2])),
     )
-
+    if isinstance(splitted_text, str):
+        splitted_text = [splitted_text]
     for i, p in enumerate(splitted_text):
         txt_img_draw.text(
             (sum(piece_widths[0:i]) + i * character_spacing * int(not word_split), 0),
@@ -166,6 +168,7 @@ def _generate_vertical_text(
     stroke_width: int = 0,
     stroke_fill: str = "#282828",
 ) -> Tuple:
+    print(f"Font: {font}")
     image_font = ImageFont.truetype(font=font, size=font_size)
 
     space_height = int(get_text_height(image_font, " ") * space_width)
