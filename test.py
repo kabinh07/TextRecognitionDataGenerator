@@ -51,26 +51,29 @@ if __name__ == "__main__":
     # with open(os.path.join(os.path.dirname(__file__), ('data_v2/data_small.json')), 'w') as f:
     #     json.dump(json_data[:50], f)
     print(f"Loaded {len(json_data)} items from data.json")
-    texts = ["মোঃ কাবিন হাসান কাঞ্চন", "বাসা নং-১৭৬, রোড নংঃ ৬, ব্লকঃ সি, বসুন্ধরা আবাসিক এলাকা, ঢাকা।"]
-    # for item in tqdm(json_data, total=len(json_data), desc="Processing items"):
-    #     text = item['content']
-    #     transformed_text = split_paragraph_randomly(text, min_words=1, max_words=30, line_break_chance=0.2)
-    #     cleaned_text = [item for item in transformed_text if item.strip() != '']
-    #     texts.extend(cleaned_text)
+    # texts = ["মোঃ কাবিন হাসান কাঞ্চন", "বাসা নং-১৭৬, রোড নংঃ ৬, ব্লকঃ সি, বসুন্ধরা আবাসিক এলাকা, ঢাকা।"]
+    texts = []
+    for item in tqdm(json_data, total=len(json_data), desc="Processing items"):
+        text = item['content']
+        transformed_text = split_paragraph_randomly(text, min_words=1, max_words=30, line_break_chance=0.2)
+        cleaned_text = [item for item in transformed_text if item.strip() != '']
+        texts.extend(cleaned_text)
     
     text_count = 10
 
     generator =  GeneratorFromStrings(
         strings=texts,
         count=text_count,
-        size=32,
+        size=20,
         language='bn',
-        skewing_angle=2,
+        skewing_angle=3,
         random_skew=True,
-        blur=0.5,
+        distorsion_type=0,
+        blur=1.5,
         random_blur=True,
         fit=True,
         word_split=True,
+        background_type=3,
         # margins=(10,10,10,10),
         orientation=1
     )

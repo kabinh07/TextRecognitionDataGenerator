@@ -176,7 +176,6 @@ def _generate_vertical_text(
         splitted_text.append(" ")
     splitted_text.pop()
     final_splitted_text = []
-    print(splitted_text)
     for i, item in enumerate(splitted_text):
         final_splitted_text.append(item)
         if (i + 1) % 10 == 0 and (i + 1) < len(splitted_text):
@@ -184,10 +183,8 @@ def _generate_vertical_text(
                 final_splitted_text.append("\n")
             elif (i + 2) < len(splitted_text) and splitted_text[i+1] != " ":
                     final_splitted_text.append("\n")
-    print(final_splitted_text)
     splitted_text = " ".join(final_splitted_text).split("\n")
     text = splitted_text
-    print(text)
 
     char_heights = [
         get_text_height(image_font, c) if c != " " else space_height for c in text

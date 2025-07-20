@@ -37,9 +37,7 @@ class GeneratorFromStrings:
         fit: bool = False,
         output_mask: bool = False,
         word_split: bool = False,
-        image_dir: str = os.path.join(
-            "..", os.path.split(os.path.realpath(__file__))[0], "images"
-        ),
+        image_dir: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "images"),
         stroke_width: int = 0,
         stroke_fill: str = "#282828",
         image_mode: str = "RGB",
