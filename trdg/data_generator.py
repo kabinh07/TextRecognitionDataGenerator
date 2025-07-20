@@ -11,7 +11,6 @@ try:
 except ImportError as e:
     print("Missing modules for handwritten text generation.")
 
-
 class FakeTextDataGenerator(object):
     @classmethod
     def generate_from_tuple(cls, t):
@@ -119,7 +118,9 @@ class FakeTextDataGenerator(object):
                 vertical=(distorsion_orientation == 0 or distorsion_orientation == 2),
                 horizontal=(distorsion_orientation == 1 or distorsion_orientation == 2),
             )
-
+        # print(f"Distorted image width & height: {distorted_img.size}")
+        # distorted_img.save("out/dis_img.png")
+        # distorted_mask.save("out/dis_mask.png")
         ##################################
         # Resize image to desired format #
         ##################################
@@ -140,20 +141,25 @@ class FakeTextDataGenerator(object):
             background_height = size
         # Vertical text
         elif orientation == 1:
-            new_height = int(
-                float(distorted_img.size[1])
-                * (float(size - horizontal_margin) / float(distorted_img.size[0]))
-            )
+            # new_height = int(
+            #     float(distorted_img.size[1])
+            #     * (float(size - horizontal_margin) / float(distorted_img.size[0]))
+            # )
+            new_height = distorted_img.size[1]
             resized_img = distorted_img.resize(
-                (size - horizontal_margin, new_height), Image.Resampling.LANCZOS
+                (distorted_img.size[0], new_height), Image.Resampling.LANCZOS
             )
             resized_mask = distorted_mask.resize(
-                (size - horizontal_margin, new_height), Image.Resampling.NEAREST
+                (distorted_img.size[0], new_height), Image.Resampling.NEAREST
             )
-            background_width = size
+            background_width = distorted_img.size[0] + horizontal_margin
             background_height = new_height + vertical_margin
+            # print(f"NEW HEIGHT: {new_height}")
         else:
             raise ValueError("Invalid orientation")
+        
+        # resized_img.save("out/img.png")
+        # resized_mask.save("out/mask.png")
 
         #############################
         # Generate background image #
@@ -177,6 +183,8 @@ class FakeTextDataGenerator(object):
         background_mask = Image.new(
             "RGB", (background_width, background_height), (0, 0, 0)
         )
+        # background_img.save("out/img_bg.png")
+        # background_mask.save("out/mask_bg.png")
 
         ##############################################################
         # Comparing average pixel value of text and background image #
