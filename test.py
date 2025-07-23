@@ -18,6 +18,17 @@ def clean_english_words(texts):
             new_texts.append(text)
     return new_texts
 
+def clean_bangla_words(texts):
+    new_texts = []
+    for text in tqdm(texts, total=len(texts), desc="Cleaning english texts"):
+        # if re.match(r'[a-zA-Z0-9]+', text): 
+        #     print(text)
+        text = re.sub(r'[\u0980-\u09FF]+', '', text)
+        if text.strip() != '' and not re.fullmatch(rf"[{re.escape(string.punctuation)}]+", text.strip()):
+            new_texts.append(text)
+            new_texts.append(text)
+    return new_texts
+
 def split_paragraph_randomly(paragraph, min_words=1, max_words=10, line_break_chance=0.2):
     """
     Splits a paragraph into lines with random lengths (between min_words and max_words).
@@ -52,9 +63,11 @@ def split_paragraph_randomly(paragraph, min_words=1, max_words=10, line_break_ch
     return lines
 
 if __name__ == "__main__":
-    with open(os.path.join(os.path.dirname(__file__), ('data_v2/data_small.json')), 'r', encoding='utf-8') as f:
+    with open(os.path.join(os.path.dirname(__file__), ('data_v2/english_news.json')), 'r', encoding='utf-8') as f:
         json_data = json.load(f)
     print(f"Loaded {len(json_data)} items from data.json")
+    random.shuffle(json_data)
+    json_data = json_data[:50000]
 
     df = pd.read_csv(os.path.join(os.path.dirname(__file__), 'data_v2/train_labels.csv'), encoding='utf-8')
     texts = df['words'].to_list()
@@ -65,10 +78,16 @@ if __name__ == "__main__":
     text_count = 50000
     font_size = 20
     blur = 1.5
-    lanuage = 'bn'
+    lanuage = 'en'
 
     for item in tqdm(json_data, total=len(json_data), desc="Processing items"):
-        text = item['content']
+        text = ""
+        if isinstance(item, dict):
+            text = item['content']
+        elif isinstance(item, str):
+            text = item
+        else:
+            continue
         if orietation == 0:
             transformed_text = split_paragraph_randomly(text, min_words=1, max_words=10, line_break_chance=0.0)
             font_size = 32
@@ -80,6 +99,8 @@ if __name__ == "__main__":
     
     if lanuage == 'bn':
         texts = clean_english_words(texts)
+    if lanuage == 'en':
+        texts = clean_bangla_words(texts)
     texts = list(set(texts))
     random.shuffle(texts)
 
@@ -100,7 +121,7 @@ if __name__ == "__main__":
         background_type=3,
         orientation=orietation
     )
-    count = 0
+    count = 50000
     for img, lbl in tqdm(generator, total=text_count, desc="Generating images"):
         try:
             if not os.path.exists('/app/out/images'):
