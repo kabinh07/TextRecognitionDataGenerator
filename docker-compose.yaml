@@ -1,0 +1,7 @@
+services:
+  text_generator:
+    container_name: text_generator
+    build: .
+    volumes:
+      - /mnt/truenas/datasets/synth/raw_corpus/data_v2:/app/data
+    

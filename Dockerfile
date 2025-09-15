@@ -41,3 +41,5 @@ RUN python setup.py install
 RUN pip install -r requirements.txt
 RUN pip install pytest
 
+CMD ["/bin/bash"]
+
