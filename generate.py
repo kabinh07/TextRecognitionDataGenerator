@@ -60,80 +60,6 @@ def split_paragraph_randomly(paragraph, min_words=1, max_words=10, line_break_ch
 
     return lines
 
-# if __name__ == "__main__":
-#     with open(os.path.join(os.path.dirname(__file__), ('data_v2/english_news.json')), 'r', encoding='utf-8') as f:
-#         json_data = json.load(f)
-#     print(f"Loaded {len(json_data)} items from data.json")
-#     random.shuffle(json_data)
-#     json_data = json_data[:50000]
-
-#     df = pd.read_csv(os.path.join(os.path.dirname(__file__), 'data_v2/train_labels.csv'), encoding='utf-8')
-#     texts = df['words'].to_list()
-
-#     print(f"Total texts from dataframe: {len(texts)}")
-    
-#     orietation = 0
-#     text_count = 50000
-#     font_size = 20
-#     blur = 1.5
-#     lanuage = 'en'
-
-#     for item in tqdm(json_data, total=len(json_data), desc="Processing items"):
-#         text = ""
-#         if isinstance(item, dict):
-#             text = item['content']
-#         elif isinstance(item, str):
-#             text = item
-#         else:
-#             continue
-#         if orietation == 0:
-#             transformed_text = split_paragraph_randomly(text, min_words=1, max_words=10, line_break_chance=0.0)
-#             font_size = 32
-#             blur = 0.1
-#         else:
-#             transformed_text = split_paragraph_randomly(text, min_words=1, max_words=30, line_break_chance=0.2)
-#         cleaned_text = [item for item in transformed_text if item.strip() != '']
-#         texts.extend(cleaned_text)
-    
-#     if lanuage == 'bn':
-#         texts = clean_english_words(texts)
-#     if lanuage == 'en':
-#         texts = clean_bangla_words(texts)
-#     texts = list(set(texts))
-#     random.shuffle(texts)
-
-#     print("\n\nParameters:\nOrientation:", orietation, "\nText Count:", len(texts), "\nFont Size:", font_size, "\nBlur:", blur, "\n\n")
-
-#     generator =  GeneratorFromStrings(
-#         strings=texts,
-#         count=text_count,
-#         size=font_size,
-#         language=lanuage,
-#         skewing_angle=3,
-#         random_skew=True,
-#         distorsion_type=0,
-#         blur=1.5,
-#         random_blur=True,
-#         fit=True,
-#         word_split=True,
-#         background_type=3,
-#         orientation=orietation
-#     )
-#     count = 50000
-#     for img, lbl in tqdm(generator, total=text_count, desc="Generating images"):
-#         try:
-#             if not os.path.exists('/app/out/images'):
-#                 os.makedirs('/app/out/images')
-#             if not os.path.exists('/app/out/labels'):
-#                 os.makedirs('/app/out/labels')
-#             img.save(f'/app/out/images/{count}.png')
-#             with open(f'/app/out/labels/{count}.txt', 'w', encoding='utf-8') as f:
-#                 f.write(lbl)
-#         except Exception as e:
-#             print(f"Error saving image {count}: {e}")
-#             continue
-#         count += 1
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate synthetic text images.")
     parser.add_argument('--language', type=str, choices=['en', 'bn'], default='bn', help='Language of the text (en for English, bn for Bangla)')
@@ -176,31 +102,34 @@ if __name__ == "__main__":
     texts = df['words'].to_list()
 
     print(f"Total texts from dataframe: {len(texts)}")
+    BATCH_SIZE = 50000
     json_data = json_data[:text_count]
-    for item in tqdm(json_data, total=len(json_data), desc="Processing items"):
-        text = ""
-        if isinstance(item, dict):
-            text = item['content']
-        elif isinstance(item, str):
-            text = item
-        else:
-            continue
-        if orietation == 0:
-            if use_list:
-                transformed_text = json_data
-                font_size = 32
-                blur = 0.1
+    for i in range(0, len(json_data), BATCH_SIZE):
+        batch = json_data[i:i + BATCH_SIZE]
+        for item in tqdm(batch, total=len(batch), desc="Processing items"):
+            text = ""
+            if isinstance(item, dict):
+                text = item['content']
+            elif isinstance(item, str):
+                text = item
             else:
-                transformed_text = split_paragraph_randomly(text, min_words=1, max_words=10, line_break_chance=0.0)
-                font_size = 32
-                blur = 0.1
-        else:
-            if use_list:
-                transformed_text = json_data
+                continue
+            if orietation == 0:
+                if use_list:
+                    transformed_text = [item]
+                    font_size = 32
+                    blur = 0.1
+                else:
+                    transformed_text = split_paragraph_randomly(text, min_words=1, max_words=10, line_break_chance=0.0)
+                    font_size = 32
+                    blur = 0.1
             else:
-                transformed_text = split_paragraph_randomly(text, min_words=1, max_words=30, line_break_chance=0.2)
-        cleaned_text = [item for item in transformed_text if item.strip() != '']
-        texts.extend(cleaned_text)
+                if use_list:
+                    transformed_text = [item]
+                else:
+                    transformed_text = split_paragraph_randomly(text, min_words=1, max_words=30, line_break_chance=0.2)
+            cleaned_text = [item for item in transformed_text if item.strip() != '']
+            texts.extend(cleaned_text)
     
     if language == 'bn':
         texts = clean_english_words(texts)
