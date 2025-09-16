@@ -3,8 +3,9 @@ from tqdm import tqdm
 import re
 import pandas as pd
 import string
+import os
 
-with open("data_v2/data_v2.json", 'r', encoding='utf-8') as f:
+with open(os.path.join(os.path.dirname(__file__), ('data/data_V2.json')), 'r', encoding='utf-8') as f:
     data = json.load(f)
 
 def split_into_chunks(text, chunk_size=30):
@@ -62,10 +63,10 @@ for item in tqdm(data, total=len(data)):
     bangla_data.extend(split_into_chunks(item.get("title")))
     bangla_data.extend(split_into_chunks(item.get("content")))
 
-df = pd.read_csv("data_v2/train_labels.csv", encoding='utf-8')
+df = pd.read_csv(os.path.join(os.path.dirname(__file__), 'data/train_labels.csv'), encoding='utf-8')
 texts = df['words'].to_list()
 texts = clean_english_words(texts)
 bangla_data.extend(texts)
 
-with open("data_v2/bangla_data.json", 'w', encoding='utf-8') as f:
+with open("/app/list_data/bangla_list.json", 'w', encoding='utf-8') as f:
     json.dump(bangla_data, f, ensure_ascii=False, indent=4)
