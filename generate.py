@@ -65,8 +65,8 @@ if __name__ == "__main__":
     parser.add_argument('--language', type=str, choices=['en', 'bn'], default='bn', help='Language of the text (en for English, bn for Bangla)')
     parser.add_argument('--text_count', type=int, default=100, help='Number of text images to generate')
     parser.add_argument('--orientation', type=int, choices=[0, 1], default=0, help='Orientation of the text (0: horizontal, 1: vertical)')
-    parser.add_argument('--font_size', type=int, default=20, help='Font size of the text')
-    parser.add_argument('--blur', type=float, default=1.5, help='Blur level of the text images')
+    parser.add_argument('--font_size', type=int, default=32, help='Font size of the text')
+    parser.add_argument('--blur', type=float, default=1.2, help='Blur level of the text images')
     parser.add_argument('--use_list', action='store_true', help='Use list data for text generation')
     args = parser.parse_args()
 
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     blur = args.blur
     use_list = args.use_list
 
-    print("\n\nParameters:\nOrientation:", orietation, "\nFont Size:", font_size, "\nBlur:", blur, "\n\nUse_list:", use_list, "\n\n")
+    print("\n\nParameters:\nOrientation:", orietation, "\nFont Size:", font_size, "\nBlur:", blur, "\nUse_list:", use_list, "\n\n")
 
     # Loading JSON corpuses from files
     if language == 'en' and not use_list:
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         with open(os.path.join(os.path.dirname(__file__), ('list_data/bangla_list.json')), 'r', encoding='utf-8') as f:
             json_data = json.load(f)
     elif language == 'en' and use_list:
-        with open(os.path.join(os.path.dirname(__file__), ('data/english_data.json')), 'r', encoding='utf-8') as f:
+        with open(os.path.join(os.path.dirname(__file__), ('list_data/english_list.json')), 'r', encoding='utf-8') as f:
             json_data = json.load(f)
     else:
         print("Invalid language choice. Please choose 'en' or 'bn'.")
@@ -98,8 +98,10 @@ if __name__ == "__main__":
 
     print(f"Loaded {len(json_data)} items")
 
-    df = pd.read_csv(os.path.join(os.path.dirname(__file__), 'data/train_labels.csv'), encoding='utf-8')
-    texts = df['words'].to_list()
+    texts = []
+    if not use_list:
+        df = pd.read_csv(os.path.join(os.path.dirname(__file__), 'data/train_labels.csv'), encoding='utf-8')
+        texts = df['words'].to_list()
 
     print(f"Total texts from dataframe: {len(texts)}")
     BATCH_SIZE = 50000
@@ -117,12 +119,8 @@ if __name__ == "__main__":
             if orietation == 0:
                 if use_list:
                     transformed_text = [item]
-                    font_size = 32
-                    blur = 0.1
                 else:
                     transformed_text = split_paragraph_randomly(text, min_words=1, max_words=10, line_break_chance=0.0)
-                    font_size = 32
-                    blur = 0.1
             else:
                 if use_list:
                     transformed_text = [item]
@@ -136,7 +134,8 @@ if __name__ == "__main__":
     if language == 'en':
         texts = clean_bangla_words(texts)
     texts = list(set(texts))
-    random.shuffle(texts)
+    if not use_list:
+        random.shuffle(texts)
 
     generator =  GeneratorFromStrings(
         strings=texts,
@@ -146,7 +145,7 @@ if __name__ == "__main__":
         skewing_angle=3,
         random_skew=True,
         distorsion_type=0,
-        blur=1.5,
+        blur=blur,
         random_blur=True,
         fit=True,
         word_split=True,

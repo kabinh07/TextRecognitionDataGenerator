@@ -11,4 +11,4 @@ services:
       - ./trdg/fonts:/app/trdg/fonts
     mem_limit: 16g
     cpus: 8
-    command: python3 generate.py --use_list --text_count 200000
+    command: python3 generate.py --use_list --text_count 200 --language bn
