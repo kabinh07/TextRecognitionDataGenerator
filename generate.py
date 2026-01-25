@@ -337,12 +337,12 @@ if __name__ == "__main__":
                         if text == lbl:
                             text_idx = idx
                             break
-                    
-                    if text_idx is not None and text_idx in class_mapping:
-                        class_name = class_mapping[text_idx]
-                        label_with_class = f"{class_name}|{lbl}"
-                    else:
-                        label_with_class = f"unknown|{lbl}"
+                    label_with_class = lbl
+                    # if text_idx is not None and text_idx in class_mapping:
+                    #     class_name = class_mapping[text_idx]
+                    #     label_with_class = f"{class_name}|{lbl}"
+                    # else:
+                    #     label_with_class = f"unknown|{lbl}"
                 else:
                     label_with_class = lbl
                 
