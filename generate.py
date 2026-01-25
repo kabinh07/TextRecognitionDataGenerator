@@ -122,6 +122,7 @@ if __name__ == "__main__":
     parser.add_argument('--use_list', action='store_true', help='Use list data for text generation')
     parser.add_argument('--json_file', type=str, default=None, help='Path to JSON file with format {class_name: [list_of_texts]}')
     parser.add_argument('--separate_folders', action='store_true', help='Save each class in separate folders instead of together')
+    parser.add_argument('--en_font', type=str, default=None, help='Path to Arial.ttf or any font file to use ONLY for English text generation')
     args = parser.parse_args()
 
     language = args.language
@@ -132,8 +133,14 @@ if __name__ == "__main__":
     use_list = args.use_list
     json_file = args.json_file
     separate_folders = args.separate_folders
+    en_font = args.en_font
 
-    print("\n\nParameters:\nOrientation:", orietation, "\nFont Size:", font_size, "\nBlur:", blur, "\nUse_list:", use_list, "\nJSON File:", json_file, "\nSeparate Folders:", separate_folders, "\n\n")
+    print("\n\nParameters:\nOrientation:", orietation, "\nFont Size:", font_size, "\nBlur:", blur, "\nUse_list:", use_list, "\nJSON File:", json_file, "\nSeparate Folders:", separate_folders, "\nEnglish Font:", en_font, "\n\n")
+
+    # Validate English font path if provided
+    if en_font and not os.path.exists(en_font):
+        print(f"ERROR: English font file not found: {en_font}")
+        sys.exit(1)
 
     # Loading JSON corpuses from files
     if json_file:
@@ -268,9 +275,17 @@ if __name__ == "__main__":
             continue
         
         print(f"\nGenerating {lang.upper()} images...")
+        
+        # Use Arial.ttf for English if specified or available
+        fonts_to_use = []
+        if lang == 'en' and en_font:
+            fonts_to_use = [en_font]
+            print(f"Using font: {en_font}")
+        
         generator = GeneratorFromStrings(
             strings=lang_texts,
             count=min(text_count, len(lang_texts)),
+            fonts=fonts_to_use,
             size=font_size,
             language=lang,
             skewing_angle=3,

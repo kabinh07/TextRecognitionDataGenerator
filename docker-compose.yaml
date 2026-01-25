@@ -11,4 +11,4 @@ services:
       - ./trdg/fonts:/app/trdg/fonts
     mem_limit: 16g
     cpus: 8
-    command: python3 generate.py --json_file /app/data/nid_data_texts.json
+    command: python3 generate.py --json_file /app/data/nid_data_texts.json --en_font /app/trdg/fonts/en/Arial.ttf
