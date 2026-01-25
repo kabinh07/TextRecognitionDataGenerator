@@ -3,12 +3,12 @@ services:
     container_name: text_generator
     build: .
     volumes:
-      - /mnt/truenas/datasets/synth/raw_corpus/data_v2:/app/data
-      - /mnt/truenas/datasets/synth/400K:/app/output
+      - ./data:/app/data
+      - /mnt/truenas/datasets/synth/nid_data_synth:/app/output
       - /mnt/truenas/datasets/synth/list_data:/app/list_data
       - ./generate_list_data.py:/app/generate_list_data.py
       - ./generate.py:/app/generate.py
       - ./trdg/fonts:/app/trdg/fonts
     mem_limit: 16g
     cpus: 8
-    command: python3 generate.py --use_list --text_count 200 --language bn
+    command: python3 generate.py --json_file /app/data/nid_data_texts.json

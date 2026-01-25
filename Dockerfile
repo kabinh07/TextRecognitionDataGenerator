@@ -37,7 +37,7 @@ COPY . /app/
 RUN pip install --upgrade pip
 RUN pip install codecov
 
-RUN python setup.py install
+RUN pip install .
 RUN pip install -r requirements.txt
 RUN pip install pytest
 
