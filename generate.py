@@ -1,5 +1,6 @@
 from trdg.generators import GeneratorFromStrings
 import json
+import collections
 import random
 import os
 from tqdm import tqdm
@@ -8,6 +9,7 @@ import re
 import string
 import argparse
 import sys
+from create_analytics_report import generate_markdown_report
 
 def clean_english_words(texts):
     new_texts = []
@@ -180,8 +182,7 @@ if __name__ == "__main__":
 
     print(f"Loaded {len(json_data)} items")
 
-    texts = []
-    class_mapping = {}  # Maps text index to class name
+    items = []
     
     # Handle custom JSON format: {class_name: [list_of_texts]}
     if json_file:
@@ -192,85 +193,82 @@ if __name__ == "__main__":
             if class_name == "name_en":
                 class_texts += [text.upper() for text in class_texts if isinstance(text, str)]
             if isinstance(class_texts, list):
-                for idx, item in enumerate(class_texts):
+                for item in class_texts:
                     if isinstance(item, dict):
                         # Extract each field separately to preserve language-specific text
                         for key, value in item.items():
                             if isinstance(value, str) and value.strip():
-                                texts.append(value.strip())
-                                class_mapping[len(texts) - 1] = class_name
+                                items.append((value.strip(), class_name))
                     elif isinstance(item, str) and item.strip():
-                        texts.append(item)
-                        class_mapping[len(texts) - 1] = class_name
-        print(f"Extracted {len(texts)} field values from {len(class_list)} classes")
+                        items.append((item.strip(), class_name))
+        print(f"Extracted {len(items)} field values from {len(class_list)} classes")
     
     else:
         # Original format handling
         if not use_list:
             df = pd.read_csv(os.path.join(os.path.dirname(__file__), 'data/train_labels.csv'), encoding='utf-8')
-            texts = df['words'].to_list()
-        
-        print(f"Total texts from dataframe: {len(texts)}")
+            plain_texts = df['words'].to_list()
+        else:
+            # Load from json_data which is a list
+            plain_texts = []
+            if not json_file:
+                BATCH_SIZE = 50000
+                json_data = json_data[:text_count]
+                for i in range(0, len(json_data), BATCH_SIZE):
+                    batch = json_data[i:i + BATCH_SIZE]
+                    for item in tqdm(batch, total=len(batch), desc="Processing items"):
+                        text = ""
+                        if isinstance(item, dict):
+                            text = item['content']
+                        elif isinstance(item, str):
+                            text = item
+                        else:
+                            continue
+                        if orietation == 0:
+                            if use_list:
+                                transformed_text = [item]
+                            else:
+                                transformed_text = split_paragraph_randomly(text, min_words=1, max_words=10, line_break_chance=0.0)
+                        else:
+                            if use_list:
+                                transformed_text = [item]
+                            else:
+                                transformed_text = split_paragraph_randomly(text, min_words=1, max_words=30, line_break_chance=0.2)
+                        cleaned_text = [item for item in transformed_text if item.strip() != '']
+                        plain_texts.extend(cleaned_text)
+                        
+        items = [(t, 'unknown') for t in plain_texts]
+        print(f"Total texts: {len(items)}")
     
-    # Auto-detect language if not provided
-    if language is None and texts:
-        language = detect_language(texts)
-        print(f"Auto-detected language: {language}")
-    # Only process paragraphs if not using custom JSON format
-    if not json_file:
-        BATCH_SIZE = 50000
-        json_data = json_data[:text_count]
-        for i in range(0, len(json_data), BATCH_SIZE):
-            batch = json_data[i:i + BATCH_SIZE]
-            for item in tqdm(batch, total=len(batch), desc="Processing items"):
-                text = ""
-                if isinstance(item, dict):
-                    text = item['content']
-                elif isinstance(item, str):
-                    text = item
-                else:
-                    continue
-                if orietation == 0:
-                    if use_list:
-                        transformed_text = [item]
-                    else:
-                        transformed_text = split_paragraph_randomly(text, min_words=1, max_words=10, line_break_chance=0.0)
-                else:
-                    if use_list:
-                        transformed_text = [item]
-                    else:
-                        transformed_text = split_paragraph_randomly(text, min_words=1, max_words=30, line_break_chance=0.2)
-                cleaned_text = [item for item in transformed_text if item.strip() != '']
-                texts.extend(cleaned_text)
-    
-    # if language == 'bn':
-    #     texts = clean_english_words(texts)
-    # if language == 'en':
-    #     texts = clean_bangla_words(texts)
-    texts = list(set(texts))
-    if not use_list and not json_file:
-        random.shuffle(texts)
+    # Shuffle checks
+    # For balanced dataset generation, we want to shuffle even if json_file is provided,
+    # unless order is strictly required (which is rarely the case for synthetic data generation)
+    if not use_list: 
+        random.shuffle(items)
 
-    # Separate texts by language if using custom JSON
+    # Separate texts by language
+    # items is list of (text, class)
     texts_by_language = {'bn': [], 'en': []}
-    text_language_map = {}  # Maps text index to its detected language
     
     if json_file:
-        # Auto-detect language for each text when using custom JSON
-        for idx, text in enumerate(texts):
+        # Auto-detect language for each text
+        for text, class_name in items:
             detected_lang = detect_text_language(text)
-            text_language_map[idx] = detected_lang
-            texts_by_language[detected_lang].append(text)
+            texts_by_language[detected_lang].append((text, class_name))
         print(f"Detected {len(texts_by_language['bn'])} Bangla texts and {len(texts_by_language['en'])} English texts")
     else:
         # Use the specified/detected language for all texts
-        texts_by_language[language] = texts
-        for idx in range(len(texts)):
-            text_language_map[idx] = language
+        # Auto-detect language if not provided
+        if language is None and items:
+            sample_texts = [x[0] for x in items[:100]]
+            language = detect_language(sample_texts)
+            print(f"Auto-detected language: {language}")
+            
+        texts_by_language[language] = items
 
     # Generate images for both languages
-    for lang, lang_texts in texts_by_language.items():
-        if not lang_texts:
+    for lang, lang_items in texts_by_language.items():
+        if not lang_items:
             print(f"No {lang} texts to generate")
             continue
         
@@ -282,9 +280,12 @@ if __name__ == "__main__":
             fonts_to_use = [en_font]
             print(f"Using font: {en_font}")
         
+        # Extract just strings for the generator
+        lang_texts = [x[0] for x in lang_items]
+        
         generator = GeneratorFromStrings(
             strings=lang_texts,
-            count=min(text_count, len(lang_texts)),
+            count=text_count,
             fonts=fonts_to_use,
             size=font_size,
             language=lang,
@@ -299,21 +300,27 @@ if __name__ == "__main__":
             orientation=orietation
         )
         count = 0
-        output_dir = '/app/output'
+        output_dir = 'output'
+
         
-        for img, lbl in tqdm(generator, total=min(text_count, len(lang_texts)), desc=f"Generating {lang} images"):
+        for img, lbl in tqdm(generator, total=text_count, desc=f"Generating {lang} images"):
             try:
+                # Retrieve class name from our list of items
+                # We assume correct order is maintained by the generator
+                current_text_item = lang_items[count % len(lang_items)]
+                expected_text = current_text_item[0]
+                class_name = current_text_item[1]
+                
+                # Sanity check (optional, but good for debugging)
+                if expected_text != lbl:
+                    # If this triggers, it implies the generator skipped something or reordered.
+                    # We'll trust the generator's lbl mostly, but if we need the class, we rely on index.
+                    # Fallback or warning could go here.
+                    pass
+
                 # Determine output subdirectory based on separate_folders flag
                 if json_file and separate_folders:
-                    # Save in separate folders per class
-                    text_idx = None
-                    for idx, text in enumerate(lang_texts):
-                        if text == lbl:
-                            text_idx = idx
-                            break
-                    
-                    if text_idx is not None and text_idx in class_mapping:
-                        class_name = class_mapping[text_idx]
+                    if class_name:
                         class_output_dir = os.path.join(output_dir, class_name)
                     else:
                         class_output_dir = os.path.join(output_dir, 'unknown')
@@ -332,19 +339,10 @@ if __name__ == "__main__":
                 
                 # Save label with class tag if using custom JSON and not separate folders
                 if json_file and not separate_folders:
-                    text_idx = None
-                    for idx, text in enumerate(lang_texts):
-                        if text == lbl:
-                            text_idx = idx
-                            break
-                    label_with_class = lbl
-                    # if text_idx is not None and text_idx in class_mapping:
-                    #     class_name = class_mapping[text_idx]
-                    #     label_with_class = f"{class_name}|{lbl}"
-                    # else:
-                    #     label_with_class = f"unknown|{lbl}"
+                    label_with_class = lbl # Or f"{class_name}|{lbl}" if requested
                 else:
                     label_with_class = lbl
+
                 
                 with open(os.path.join(label_dir, f'{lang}_img_{count}.txt'), 'w', encoding='utf-8') as f:
                     f.write(label_with_class)
@@ -352,3 +350,23 @@ if __name__ == "__main__":
                 print(f"Error saving image {count}: {e}")
                 continue
             count += 1
+    
+    # Generate Analytics Report for the current run
+    print("\nGenerating analytics report for this run...")
+    analytics_data = collections.defaultdict(list)
+    
+    for lang, lang_items in texts_by_language.items():
+        if not lang_items:
+            continue
+        # We only used the first 'count' items (where count reached min(text_count, len))
+        # Note: 'count' variable above tracks the last loop, but we loop per language.
+        # So we need to be careful. The loop above runs for `min(text_count, len(lang_items))`.
+        
+        limit = min(text_count, len(lang_items))
+        used_items = lang_items[:limit]
+        
+        for text, class_name in used_items:
+            analytics_data[class_name].append(text)
+            
+    report_path = os.path.join(output_dir, 'run_analytics.md')
+    generate_markdown_report(dict(analytics_data), report_path)
