@@ -7,3 +7,4 @@ arabic-reshaper==2.1.4
 python-bidi==0.4.2
 wikipedia>=1.4.0
 pandas
+transformers

@@ -153,11 +153,15 @@ if __name__ == "__main__":
     else:
         language_provided = args.language is not None
         
-        # Default to NID data if available, as requested
+        # Default to token-balanced NID data if available
+        nid_data_token_balanced = os.path.join(os.path.dirname(__file__), 'data/nid_data_token_balanced.json')
         nid_data_path = os.path.join(os.path.dirname(__file__), 'data/nid_data_texts.json')
-        nid_data_balanced_path = os.path.join(os.path.dirname(__file__), 'data/nid_data_texts_balanced.json')
         
-        if os.path.exists(nid_data_path):
+        if os.path.exists(nid_data_token_balanced):
+             print(f"Loading token-balanced NID data from {nid_data_token_balanced}")
+             with open(nid_data_token_balanced, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+        elif os.path.exists(nid_data_path):
              print(f"Loading NID data from {nid_data_path}")
              with open(nid_data_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
@@ -255,33 +259,49 @@ if __name__ == "__main__":
     if not use_list: 
         random.shuffle(items)
 
-    # Separate texts by language
-    # items is list of (text, class)
-    texts_by_language = {'bn': [], 'en': []}
+    # Separate texts by language AND keep class information
+    # texts_by_language[lang] = {class_name: [texts]}
+    texts_by_language = {'bn': {}, 'en': {}}
     
     if json_file or isinstance(json_data, dict):
-        # Auto-detect language for each text
+        # Group by language and class for balanced sampling
         for text, class_name in items:
             detected_lang = detect_text_language(text)
-            texts_by_language[detected_lang].append((text, class_name))
-        print(f"Detected {len(texts_by_language['bn'])} Bangla texts and {len(texts_by_language['en'])} English texts")
+            if class_name not in texts_by_language[detected_lang]:
+                texts_by_language[detected_lang][class_name] = []
+            texts_by_language[detected_lang][class_name].append(text)
+        
+        print(f"\nClass distribution:")
+        for lang in ['bn', 'en']:
+            if texts_by_language[lang]:
+                print(f"  {lang.upper()}:")
+                for class_name, texts in texts_by_language[lang].items():
+                    print(f"    {class_name}: {len(texts)} items")
     else:
         # Use the specified/detected language for all texts
         # Auto-detect language if not provided
         if language is None and items:
             sample_texts = [x[0] for x in items[:100]]
             language = detect_language(sample_texts)
-            print(f"Auto-detected language: {language}")
-            
-        texts_by_language[language] = items
+            print(f"Auto-detected language: {language}\"")
+        
+        # For non-dict data, just group by unknown class
+        texts_by_language[language] = {'unknown': [x[0] for x in items]}
 
-    # Generate images for both languages
-    for lang, lang_items in texts_by_language.items():
-        if not lang_items:
+    # Generate images for both languages with CLASS-BALANCED sampling
+    for lang, class_dict in texts_by_language.items():
+        if not class_dict:
             print(f"No {lang} texts to generate")
             continue
         
-        print(f"\nGenerating {lang.upper()} images...")
+        print(f"\nGenerating {lang.upper()} images with class-balanced sampling...")
+        
+        # Prepare class-balanced sampling
+        class_names = list(class_dict.keys())
+        if not class_names:
+            continue
+        
+        print(f"Classes: {class_names}")
         
         # Use Arial.ttf for English if specified or available
         fonts_to_use = []
@@ -289,8 +309,18 @@ if __name__ == "__main__":
             fonts_to_use = [en_font]
             print(f"Using font: {en_font}")
         
+        # Generate texts by sampling from classes uniformly
+        balanced_texts = []
+        for i in range(text_count):
+            # Pick random class
+            class_name = random.choice(class_names)
+            # Pick random text from that class
+            if class_dict[class_name]:
+                text = random.choice(class_dict[class_name])
+                balanced_texts.append((text, class_name))
+        
         # Extract just strings for the generator
-        lang_texts = [x[0] for x in lang_items]
+        lang_texts = [x[0] for x in balanced_texts]
         
         generator = GeneratorFromStrings(
             strings=lang_texts,
@@ -314,18 +344,9 @@ if __name__ == "__main__":
         
         for img, lbl in tqdm(generator, total=text_count, desc=f"Generating {lang} images"):
             try:
-                # Retrieve class name from our list of items
-                # We assume correct order is maintained by the generator
-                current_text_item = lang_items[count % len(lang_items)]
-                expected_text = current_text_item[0]
-                class_name = current_text_item[1]
-                
-                # Sanity check (optional, but good for debugging)
-                if expected_text != lbl:
-                    # If this triggers, it implies the generator skipped something or reordered.
-                    # We'll trust the generator's lbl mostly, but if we need the class, we rely on index.
-                    # Fallback or warning could go here.
-                    pass
+                # Get class_name from balanced_texts
+                class_name = balanced_texts[count][1] if count < len(balanced_texts) else 'unknown'
+
 
                 # Determine output subdirectory based on separate_folders flag
                 if (json_file or isinstance(json_data, dict)) and separate_folders:
@@ -364,18 +385,16 @@ if __name__ == "__main__":
     print("\nGenerating analytics report for this run...")
     analytics_data = collections.defaultdict(list)
     
-    for lang, lang_items in texts_by_language.items():
-        if not lang_items:
+    for lang, class_dict in texts_by_language.items():
+        if not class_dict:
             continue
-        # We only used the first 'count' items (where count reached min(text_count, len))
-        # Note: 'count' variable above tracks the last loop, but we loop per language.
-        # So we need to be careful. The loop above runs for `min(text_count, len(lang_items))`.
         
-        limit = min(text_count, len(lang_items))
-        used_items = lang_items[:limit]
-        
-        for text, class_name in used_items:
-            analytics_data[class_name].append(text)
+        # Sample from class_dict for analytics
+        for _ in range(min(text_count, 100)):
+            class_name = random.choice(list(class_dict.keys()))
+            if class_dict[class_name]:
+                text = random.choice(class_dict[class_name])
+                analytics_data[class_name].append(text)
             
     report_path = os.path.join(output_dir, 'run_analytics.md')
     generate_markdown_report(dict(analytics_data), report_path)
