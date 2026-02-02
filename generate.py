@@ -119,7 +119,7 @@ if __name__ == "__main__":
     parser.add_argument('--language', type=str, choices=['en', 'bn'], default=None, help='Language of the text (en for English, bn for Bangla). Auto-detected if not provided.')
     parser.add_argument('--text_count', type=int, default=100, help='Number of text images to generate')
     parser.add_argument('--orientation', type=int, choices=[0, 1], default=0, help='Orientation of the text (0: horizontal, 1: vertical)')
-    parser.add_argument('--font_size', type=int, default=32, help='Font size of the text')
+    parser.add_argument('--font_size', type=int, default=16, help='Font size of the text')
     parser.add_argument('--blur', type=float, default=0.8, help='Blur level of the text images')
     parser.add_argument('--use_list', action='store_true', help='Use list data for text generation')
     parser.add_argument('--json_file', type=str, default=None, help='Path to JSON file with format {class_name: [list_of_texts]}')
@@ -152,7 +152,16 @@ if __name__ == "__main__":
         print(f"Loaded custom JSON file with {len(json_data)} classes")
     else:
         language_provided = args.language is not None
-        if language == 'en' and not use_list:
+        
+        # Default to NID data if available, as requested
+        nid_data_path = os.path.join(os.path.dirname(__file__), 'data/nid_data_texts.json')
+        nid_data_balanced_path = os.path.join(os.path.dirname(__file__), 'data/nid_data_texts_balanced.json')
+        
+        if os.path.exists(nid_data_path):
+             print(f"Loading NID data from {nid_data_path}")
+             with open(nid_data_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+        elif language == 'en' and not use_list:
             with open(os.path.join(os.path.dirname(__file__), ('data/english_news.json')), 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
         elif language == 'bn' and not use_list:
@@ -185,7 +194,7 @@ if __name__ == "__main__":
     items = []
     
     # Handle custom JSON format: {class_name: [list_of_texts]}
-    if json_file:
+    if json_file or isinstance(json_data, dict):
         class_list = list(json_data.keys())
         print("class list:", class_list)
         for class_name in class_list:
@@ -250,7 +259,7 @@ if __name__ == "__main__":
     # items is list of (text, class)
     texts_by_language = {'bn': [], 'en': []}
     
-    if json_file:
+    if json_file or isinstance(json_data, dict):
         # Auto-detect language for each text
         for text, class_name in items:
             detected_lang = detect_text_language(text)
@@ -319,7 +328,7 @@ if __name__ == "__main__":
                     pass
 
                 # Determine output subdirectory based on separate_folders flag
-                if json_file and separate_folders:
+                if (json_file or isinstance(json_data, dict)) and separate_folders:
                     if class_name:
                         class_output_dir = os.path.join(output_dir, class_name)
                     else:
@@ -338,7 +347,7 @@ if __name__ == "__main__":
                 img.save(os.path.join(image_dir, f'{lang}_img_{count}.png'))
                 
                 # Save label with class tag if using custom JSON and not separate folders
-                if json_file and not separate_folders:
+                if (json_file or isinstance(json_data, dict)) and not separate_folders:
                     label_with_class = lbl # Or f"{class_name}|{lbl}" if requested
                 else:
                     label_with_class = lbl

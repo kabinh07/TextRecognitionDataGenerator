@@ -127,18 +127,25 @@ class FakeTextDataGenerator(object):
 
         # Horizontal text
         if orientation == 0:
-            new_width = int(
-                distorted_img.size[0]
-                * (float(size - vertical_margin) / float(distorted_img.size[1]))
-            )
-            resized_img = distorted_img.resize(
-                (new_width, size - vertical_margin), Image.Resampling.LANCZOS
-            )
-            resized_mask = distorted_mask.resize(
-                (new_width, size - vertical_margin), Image.Resampling.NEAREST
-            )
-            background_width = width if width > 0 else new_width + horizontal_margin
-            background_height = size
+            image_height = size - vertical_margin
+            if fit and distorted_img.size[1] > image_height:
+                resized_img = distorted_img
+                resized_mask = distorted_mask
+                background_width = width if width > 0 else distorted_img.size[0] + horizontal_margin
+                background_height = distorted_img.size[1] + vertical_margin
+            else:
+                new_width = int(
+                    distorted_img.size[0]
+                    * (float(image_height) / float(distorted_img.size[1]))
+                )
+                resized_img = distorted_img.resize(
+                    (new_width, image_height), Image.Resampling.LANCZOS
+                )
+                resized_mask = distorted_mask.resize(
+                    (new_width, image_height), Image.Resampling.NEAREST
+                )
+                background_width = width if width > 0 else new_width + horizontal_margin
+                background_height = size
         # Vertical text
         elif orientation == 1:
             # new_height = int(
