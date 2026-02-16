@@ -3,6 +3,7 @@ import json
 import collections
 import random
 import os
+import math
 from tqdm import tqdm
 import pandas as pd
 import re
@@ -114,6 +115,67 @@ def split_paragraph_randomly(paragraph, min_words=1, max_words=10, line_break_ch
 
     return lines
 
+def balance_tokens(texts, target_count):
+    """
+    Balances token distribution by sampling texts based on inverse token frequency.
+    
+    Args:
+        texts (list): List of text strings.
+        target_count (int): Number of texts to sample.
+        
+    Returns:
+        list: Sampled list of texts.
+    """
+    if not texts:
+        return []
+    
+    # Ensure items are unique before balancing
+    texts = list(set([t for t in texts if isinstance(t, str) and t.strip()]))
+    
+    if len(texts) <= target_count:
+        return texts
+
+    # Tokenize and count frequencies
+    token_counts = collections.Counter()
+    for text in tqdm(texts, desc="Calculating token frequencies"):
+        if not isinstance(text, str):
+            continue
+        # Split by non-alphanumeric/non-Bangla characters
+        tokens = re.findall(r'[\u0980-\u09FF]+|[a-zA-Z0-9]+', text)
+        token_counts.update(tokens)
+    
+    # Calculate weights for each text
+    # Penalty for frequent tokens: 1 / sum(sqrt(freq(token)))
+    weights = []
+    for text in tqdm(texts, desc="Calculating sampling weights"):
+        if not isinstance(text, str):
+            weights.append(0)
+            continue
+            
+        tokens = re.findall(r'[\u0980-\u09FF]+|[a-zA-Z0-9]+', text)
+        if not tokens:
+            weights.append(0)
+            continue
+        
+        # Score is sum of sqrt(counts) for each token
+        score = sum(math.sqrt(token_counts[t]) for t in tokens)
+        weights.append(1.0 / score if score > 0 else 1.0)
+    
+    # Weighted sampling WITHOUT replacement using Efraimidis and Spirakis algorithm
+    # Each item gets a score: random.random() ^ (1/weight)
+    # The higher the weight, the more likely it is to have a high score.
+    print(f"Sampling {target_count} items without replacement...")
+    weighted_scores = []
+    for i in range(len(texts)):
+        if weights[i] > 0:
+            # Score = r^(1/w). We can use log transformed version for stability: log(r)/w
+            score = math.log(random.random()) / weights[i]
+            weighted_scores.append((score, texts[i]))
+    
+    # Highest scores win
+    weighted_scores.sort(key=lambda x: x[0], reverse=True)
+    return [x[1] for x in weighted_scores[:target_count]]
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate synthetic text images.")
     parser.add_argument('--language', type=str, choices=['en', 'bn'], default=None, help='Language of the text (en for English, bn for Bangla). Auto-detected if not provided.')
@@ -193,100 +255,121 @@ if __name__ == "__main__":
             print("Invalid language choice. Please choose 'en' or 'bn'.")
             sys.exit(1)
 
-    print(f"Loaded {len(json_data)} items")
+    # Loading JSON corpuses from files and preparing texts_by_language
+    texts_by_language = {'bn': {}, 'en': {}}
 
-    items = []
-    
-    # Handle custom JSON format: {class_name: [list_of_texts]}
-    if json_file or isinstance(json_data, dict):
-        class_list = list(json_data.keys())
-        print("class list:", class_list)
-        for class_name in class_list:
-            class_texts = json_data[class_name]
+    if use_list:
+        print("Using list data from list_data directory...")
+        # Bangla
+        bn_path = os.path.join(os.path.dirname(__file__), 'list_data/bangla_list.json')
+        if os.path.exists(bn_path) and (language in ['bn', None]):
+             print(f"Loading and balancing Bangla list from {bn_path}...")
+             with open(bn_path, 'r', encoding='utf-8') as f:
+                 bn_data = json.load(f)
+             bn_balanced = balance_tokens(bn_data, text_count)
+             texts_by_language['bn']['list_data'] = bn_balanced
+             
+        # English
+        en_path = os.path.join(os.path.dirname(__file__), 'list_data/english_list.json')
+        if os.path.exists(en_path) and (language in ['en', None]):
+             print(f"Loading and balancing English list from {en_path}...")
+             with open(en_path, 'r', encoding='utf-8') as f:
+                 en_data = json.load(f)
+             en_balanced = balance_tokens(en_data, text_count)
+             texts_by_language['en']['list_data'] = en_balanced
+        
+        if not texts_by_language['bn'] and not texts_by_language['en']:
+            print("No list data found in list_data/ directory.")
+            sys.exit(1)
+            
+        # Define json_data for consistency with following logic
+        json_data = texts_by_language
+            
+    elif json_file:
+        # Load from user-provided JSON file with format {class_name: [list_of_texts]}
+        with open(json_file, 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+        print(f"Loaded custom JSON file with {len(json_data)} classes")
+        
+        # Group by language and class
+        for class_name, class_texts in json_data.items():
             if class_name == "name_en":
                 class_texts += [text.upper() for text in class_texts if isinstance(text, str)]
-            if isinstance(class_texts, list):
-                for item in class_texts:
-                    if isinstance(item, dict):
-                        # Extract each field separately to preserve language-specific text
-                        for key, value in item.items():
-                            if isinstance(value, str) and value.strip():
-                                items.append((value.strip(), class_name))
-                    elif isinstance(item, str) and item.strip():
-                        items.append((item.strip(), class_name))
-        print(f"Extracted {len(items)} field values from {len(class_list)} classes")
-    
+            
+            for text in class_texts:
+                val = ""
+                if isinstance(text, dict):
+                    # Use the first string value found in the dict
+                    for v in text.values():
+                        if isinstance(v, str) and v.strip():
+                            val = v.strip()
+                            break
+                elif isinstance(text, str) and text.strip():
+                    val = text.strip()
+                
+                if val:
+                    detected_lang = detect_text_language(val)
+                    if class_name not in texts_by_language[detected_lang]:
+                        texts_by_language[detected_lang][class_name] = []
+                    texts_by_language[detected_lang][class_name].append(val)
     else:
-        # Original format handling
-        if not use_list:
-            df = pd.read_csv(os.path.join(os.path.dirname(__file__), 'data/train_labels.csv'), encoding='utf-8')
-            plain_texts = df['words'].to_list()
+        # Default behavior: NID or news data
+        nid_data_token_balanced = os.path.join(os.path.dirname(__file__), 'data/nid_data_token_balanced.json')
+        nid_data_path = os.path.join(os.path.dirname(__file__), 'data/nid_data_texts.json')
+        
+        if os.path.exists(nid_data_token_balanced):
+            print(f"Loading token-balanced NID data from {nid_data_token_balanced}")
+            with open(nid_data_token_balanced, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+        elif os.path.exists(nid_data_path):
+            print(f"Loading NID data from {nid_data_path}")
+            with open(nid_data_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
         else:
-            # Load from json_data which is a list
-            plain_texts = []
-            if not json_file:
-                BATCH_SIZE = 50000
-                json_data = json_data[:text_count]
-                for i in range(0, len(json_data), BATCH_SIZE):
-                    batch = json_data[i:i + BATCH_SIZE]
-                    for item in tqdm(batch, total=len(batch), desc="Processing items"):
-                        text = ""
-                        if isinstance(item, dict):
-                            text = item['content']
-                        elif isinstance(item, str):
-                            text = item
-                        else:
-                            continue
-                        if orietation == 0:
-                            if use_list:
-                                transformed_text = [item]
-                            else:
-                                transformed_text = split_paragraph_randomly(text, min_words=1, max_words=10, line_break_chance=0.0)
-                        else:
-                            if use_list:
-                                transformed_text = [item]
-                            else:
-                                transformed_text = split_paragraph_randomly(text, min_words=1, max_words=30, line_break_chance=0.2)
-                        cleaned_text = [item for item in transformed_text if item.strip() != '']
-                        plain_texts.extend(cleaned_text)
-                        
-        items = [(t, 'unknown') for t in plain_texts]
-        print(f"Total texts: {len(items)}")
-    
-    # Shuffle checks
-    # For balanced dataset generation, we want to shuffle even if json_file is provided,
-    # unless order is strictly required (which is rarely the case for synthetic data generation)
-    if not use_list: 
-        random.shuffle(items)
+            # Fallback to language-specific news
+            if language == 'en':
+                with open(os.path.join(os.path.dirname(__file__), 'data/english_news.json'), 'r', encoding='utf-8') as f:
+                    json_data = json.load(f)
+            elif language == 'bn':
+                with open(os.path.join(os.path.dirname(__file__), 'data/data_V2.json'), 'r', encoding='utf-8') as f:
+                    json_data = json.load(f)
+            else:
+                # Try to load any available
+                try:
+                    with open(os.path.join(os.path.dirname(__file__), 'data/data_V2.json'), 'r', encoding='utf-8') as f:
+                        json_data = json.load(f)
+                except:
+                    print("Could not load default JSON files. Please specify --language or --use_list.")
+                    sys.exit(1)
+        
+        # Process json_data into texts_by_language
+        if isinstance(json_data, dict):
+            for class_name, texts in json_data.items():
+                for t in texts:
+                    if isinstance(t, str) and t.strip():
+                        det_lang = detect_text_language(t)
+                        if class_name not in texts_by_language[det_lang]:
+                            texts_by_language[det_lang][class_name] = []
+                        texts_by_language[det_lang][class_name].append(t)
+        else:
+            # List format
+            for t in json_data:
+                if isinstance(t, str) and t.strip():
+                    det_lang = detect_text_language(t)
+                    if 'unknown' not in texts_by_language[det_lang]:
+                        texts_by_language[det_lang]['unknown'] = []
+                    texts_by_language[det_lang]['unknown'].append(t)
 
-    # Separate texts by language AND keep class information
-    # texts_by_language[lang] = {class_name: [texts]}
-    texts_by_language = {'bn': {}, 'en': {}}
-    
-    if json_file or isinstance(json_data, dict):
-        # Group by language and class for balanced sampling
-        for text, class_name in items:
-            detected_lang = detect_text_language(text)
-            if class_name not in texts_by_language[detected_lang]:
-                texts_by_language[detected_lang][class_name] = []
-            texts_by_language[detected_lang][class_name].append(text)
-        
-        print(f"\nClass distribution:")
-        for lang in ['bn', 'en']:
-            if texts_by_language[lang]:
-                print(f"  {lang.upper()}:")
-                for class_name, texts in texts_by_language[lang].items():
-                    print(f"    {class_name}: {len(texts)} items")
-    else:
-        # Use the specified/detected language for all texts
-        # Auto-detect language if not provided
-        if language is None and items:
-            sample_texts = [x[0] for x in items[:100]]
-            language = detect_language(sample_texts)
-            print(f"Auto-detected language: {language}\"")
-        
-        # For non-dict data, just group by unknown class
-        texts_by_language[language] = {'unknown': [x[0] for x in items]}
+    # Print distribution info
+    for lang in ['bn', 'en']:
+        if texts_by_language[lang]:
+            print(f"\n{lang.upper()} distribution:")
+            for class_name, texts in texts_by_language[lang].items():
+                print(f"  {class_name}: {len(texts)} items")
+
+    output_dir = 'output'
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     # Generate images for both languages with CLASS-BALANCED sampling
     for lang, class_dict in texts_by_language.items():
@@ -309,15 +392,23 @@ if __name__ == "__main__":
             fonts_to_use = [en_font]
             print(f"Using font: {en_font}")
         
-        # Generate texts by sampling from classes uniformly
+        # Generate texts by sampling from classes
         balanced_texts = []
-        for i in range(text_count):
-            # Pick random class
-            class_name = random.choice(class_names)
-            # Pick random text from that class
-            if class_dict[class_name]:
-                text = random.choice(class_dict[class_name])
-                balanced_texts.append((text, class_name))
+        if use_list and 'list_data' in class_dict:
+            # For use_list, we already have perfectly balanced and unique texts in 'list_data'
+            balanced_texts = [(t, 'list_data') for t in class_dict['list_data']]
+            # In case list_data has more or fewer than text_count (though it shouldn't), 
+            # we should cap it or just use it.
+            balanced_texts = balanced_texts[:text_count]
+        else:
+            # Sampling from classes uniformly
+            for i in range(text_count):
+                # Pick random class
+                class_name = random.choice(class_names)
+                # Pick random text from that class
+                if class_dict[class_name]:
+                    text = random.choice(class_dict[class_name])
+                    balanced_texts.append((text, class_name))
         
         # Extract just strings for the generator
         lang_texts = [x[0] for x in balanced_texts]
