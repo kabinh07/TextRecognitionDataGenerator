@@ -4,11 +4,11 @@ services:
     build: .
     volumes:
       - ./data:/app/data
-      - /mnt/truenas/datasets/synth/nid_data_synth:/app/output
-      - /mnt/truenas/datasets/synth/list_data:/app/list_data
+      - ./output:/app/output
+      - ./list_data:/app/list_data
       - ./generate_list_data.py:/app/generate_list_data.py
       - ./generate.py:/app/generate.py
       - ./trdg/fonts:/app/trdg/fonts
     mem_limit: 16g
-    cpus: 8
-    command: python3 generate.py --json_file /app/data/nid_data_texts_balanced.json --en_font /app/trdg/fonts/en/Arial.ttf --text_count 200000
+    cpus: 8 
+    # command: python3 generate.py --json_file /app/data/nid_data_texts_balanced.json --en_font /app/trdg/fonts/en/Arial.ttf --text_count 200000

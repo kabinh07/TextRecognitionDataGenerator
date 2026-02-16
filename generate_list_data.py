@@ -74,7 +74,7 @@ def clean_bangla_words(texts):
 
 
 def create_bangla_list():
-    with open(os.path.join(os.path.dirname(__file__), ('data/data_V2.json')), 'r', encoding='utf-8') as f:
+    with open(os.path.join(os.path.dirname(__file__), ('data/data_v2.json')), 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     df = pd.read_csv(os.path.join(os.path.dirname(__file__), 'data/train_labels.csv'), encoding='utf-8')
@@ -128,5 +128,8 @@ def create_english_list():
         json.dump(texts, f, ensure_ascii=False, indent=4)
 
 if __name__ == "__main__":
-    create_bangla_list()
-    create_english_list()
+    # create_bangla_list()
+    # create_english_list()
+    with open("/app/list_data/bangla_list.json", 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    print(data[:20])
