@@ -3,12 +3,12 @@ services:
     container_name: text_generator
     build: .
     volumes:
-      - ./data:/app/data
-      - /mnt/truenas/datasets/synth/synth_ocr_200k:/app/output
-      - ./list_data:/app/list_data
+      - /home/kabin/nas/datasets/ocr_dataset_shamadhan:/app/data
+      - /home/kabin/nas/datasets/synth/shamadhan_synth_ocr_200k:/app/output
+      - /home/kabin/nas/datasets/synth/list_data:/app/list_data
       - ./generate_list_data.py:/app/generate_list_data.py
       - ./generate.py:/app/generate.py
       - ./trdg/fonts:/app/trdg/fonts
     mem_limit: 16g
     cpus: 8 
-    command: python3 generate.py --text_count 100000 --use_list
+    command: python3 generate.py --text_count 1000 --use_list

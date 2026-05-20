@@ -8,3 +8,4 @@ python-bidi==0.4.2
 wikipedia>=1.4.0
 pandas
 transformers
+datasets

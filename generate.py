@@ -5,12 +5,24 @@ import random
 import os
 import math
 from tqdm import tqdm
-import pandas as pd
 import re
 import string
 import argparse
 import sys
-from create_analytics_report import generate_markdown_report
+from dataset_analytics import run_analytics
+
+
+def _save_json(obj, path):
+    """Atomic JSON write: write to .tmp then rename."""
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(obj, f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def _load_json(path):
+    with open(path, encoding='utf-8') as f:
+        return json.load(f)
 
 def clean_english_words(texts):
     new_texts = []
@@ -179,7 +191,7 @@ def balance_tokens(texts, target_count):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate synthetic text images.")
     parser.add_argument('--language', type=str, choices=['en', 'bn'], default=None, help='Language of the text (en for English, bn for Bangla). Auto-detected if not provided.')
-    parser.add_argument('--text_count', type=int, default=100, help='Number of text images to generate')
+    parser.add_argument('--text_count', type=int, default=100, help='Number of text images to generate PER LANGUAGE (total = text_count * number of languages with data)')
     parser.add_argument('--orientation', type=int, choices=[0, 1], default=0, help='Orientation of the text (0: horizontal, 1: vertical)')
     parser.add_argument('--font_size', type=int, default=16, help='Font size of the text')
     parser.add_argument('--blur', type=float, default=0.8, help='Blur level of the text images')
@@ -187,6 +199,8 @@ if __name__ == "__main__":
     parser.add_argument('--json_file', type=str, default=None, help='Path to JSON file with format {class_name: [list_of_texts]}')
     parser.add_argument('--separate_folders', action='store_true', help='Save each class in separate folders instead of together')
     parser.add_argument('--en_font', type=str, default=None, help='Path to Arial.ttf or any font file to use ONLY for English text generation')
+    parser.add_argument('--double_line_prob', type=float, default=0.3, help='Probability (0-1) that a Bangla image will have two lines of text')
+    parser.add_argument('--reset', action='store_true', help='Ignore saved generation plan and start from scratch')
     args = parser.parse_args()
 
     language = args.language
@@ -198,6 +212,8 @@ if __name__ == "__main__":
     json_file = args.json_file
     separate_folders = args.separate_folders
     en_font = args.en_font
+    double_line_prob = args.double_line_prob
+    reset = args.reset
 
     print("\n\nParameters:\nOrientation:", orietation, "\nFont Size:", font_size, "\nBlur:", blur, "\nUse_list:", use_list, "\nJSON File:", json_file, "\nSeparate Folders:", separate_folders, "\nEnglish Font:", en_font, "\n\n")
 
@@ -206,56 +222,6 @@ if __name__ == "__main__":
         print(f"ERROR: English font file not found: {en_font}")
         sys.exit(1)
 
-    # Loading JSON corpuses from files
-    if json_file:
-        # Load from user-provided JSON file with format {class_name: [list_of_texts]}
-        with open(json_file, 'r', encoding='utf-8') as f:
-            json_data = json.load(f)
-        print(f"Loaded custom JSON file with {len(json_data)} classes")
-    else:
-        language_provided = args.language is not None
-        
-        # Default to token-balanced NID data if available
-        nid_data_token_balanced = os.path.join(os.path.dirname(__file__), 'data/nid_data_token_balanced.json')
-        nid_data_path = os.path.join(os.path.dirname(__file__), 'data/nid_data_texts.json')
-        
-        if os.path.exists(nid_data_token_balanced):
-             print(f"Loading token-balanced NID data from {nid_data_token_balanced}")
-             with open(nid_data_token_balanced, 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
-        elif os.path.exists(nid_data_path):
-             print(f"Loading NID data from {nid_data_path}")
-             with open(nid_data_path, 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
-        elif language == 'en' and not use_list:
-            with open(os.path.join(os.path.dirname(__file__), ('data/english_news.json')), 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
-        elif language == 'bn' and not use_list:
-            with open(os.path.join(os.path.dirname(__file__), ('data/data_V2.json')), 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
-        elif language == 'bn' and use_list:
-            with open(os.path.join(os.path.dirname(__file__), ('list_data/bangla_list.json')), 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
-        elif language == 'en' and use_list:
-            with open(os.path.join(os.path.dirname(__file__), ('list_data/english_list.json')), 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
-        elif language is None:
-            # If language not provided, try to load any available data first for detection
-            try:
-                with open(os.path.join(os.path.dirname(__file__), ('data/data_V2.json')), 'r', encoding='utf-8') as f:
-                    json_data = json.load(f)
-            except:
-                try:
-                    with open(os.path.join(os.path.dirname(__file__), ('data/english_news.json')), 'r', encoding='utf-8') as f:
-                        json_data = json.load(f)
-                except:
-                    print("Could not load default JSON files. Please specify --language explicitly.")
-                    sys.exit(1)
-        else:
-            print("Invalid language choice. Please choose 'en' or 'bn'.")
-            sys.exit(1)
-
-    # Loading JSON corpuses from files and preparing texts_by_language
     texts_by_language = {'bn': {}, 'en': {}}
 
     if use_list:
@@ -392,30 +358,77 @@ if __name__ == "__main__":
             fonts_to_use = [en_font]
             print(f"Using font: {en_font}")
         
+        # Oversample pool for bn when double_line is active (pairing consumes ~2 items per output)
+        pool_size = text_count * 2 if (lang == 'bn' and double_line_prob > 0) else text_count
+
         # Generate texts by sampling from classes
         balanced_texts = []
         if use_list and 'list_data' in class_dict:
-            # For use_list, we already have perfectly balanced and unique texts in 'list_data'
             balanced_texts = [(t, 'list_data') for t in class_dict['list_data']]
-            # In case list_data has more or fewer than text_count (though it shouldn't), 
-            # we should cap it or just use it.
-            balanced_texts = balanced_texts[:text_count]
+            balanced_texts = balanced_texts[:pool_size]
         else:
-            # Sampling from classes uniformly
-            for i in range(text_count):
-                # Pick random class
-                class_name = random.choice(class_names)
-                # Pick random text from that class
-                if class_dict[class_name]:
-                    text = random.choice(class_dict[class_name])
-                    balanced_texts.append((text, class_name))
-        
-        # Extract just strings for the generator
-        lang_texts = [x[0] for x in balanced_texts]
-        
+            # Collect unique texts from all classes, preserving class label
+            text_to_class = {}
+            for cn in class_names:
+                for t in class_dict[cn]:
+                    if t and t not in text_to_class:
+                        text_to_class[t] = cn
+            # Token-balance: Efraimidis-Spirakis undersamples high-freq-token texts
+            selected = balance_tokens(list(text_to_class.keys()), pool_size)
+            balanced_texts = [(t, text_to_class[t]) for t in selected]
+
+        # For Bangla, randomly pair adjacent texts into double-line images.
+        # Walk the pool and stop once we have exactly text_count items.
+        if lang == 'bn' and double_line_prob > 0:
+            paired = []
+            i = 0
+            while len(paired) < text_count and i < len(balanced_texts):
+                if (i + 1 < len(balanced_texts)
+                        and len(paired) < text_count
+                        and random.random() < double_line_prob):
+                    t1, c1 = balanced_texts[i]
+                    t2, _ = balanced_texts[i + 1]
+                    paired.append((f"{t1}\n{t2}", c1))
+                    i += 2
+                else:
+                    paired.append(balanced_texts[i])
+                    i += 1
+            balanced_texts = paired[:text_count]
+
+        # ── Build or load generation plan ───────────────────────────────────
+        plan_path = os.path.join(output_dir, f'.plan_{lang}.json')
+
+        if not reset and os.path.exists(plan_path):
+            print(f"  Resuming {lang} from {plan_path}")
+            plan = _load_json(plan_path)
+        else:
+            plan = []
+            for idx, (text, class_name) in enumerate(balanced_texts):
+                if separate_folders and class_name and class_name not in ('list_data', 'flat', 'synthetic', 'unknown'):
+                    class_out = os.path.join(output_dir, class_name)
+                else:
+                    class_out = output_dir
+                plan.append({
+                    'idx':        idx,
+                    'text':       text,
+                    'class_name': class_name,
+                    'image_path': os.path.join(class_out, 'images', f'{lang}_img_{idx}.png'),
+                    'label_path': os.path.join(class_out, 'labels', f'{lang}_img_{idx}.txt'),
+                })
+            _save_json(plan, plan_path)
+
+        # ── Filter to not-yet-generated items ────────────────────────────────
+        todo = [p for p in plan if not os.path.exists(p['image_path'])]
+        done_count = len(plan) - len(todo)
+        print(f"  {lang}: {done_count} already done, {len(todo)} remaining")
+
+        if not todo:
+            continue
+
+        # ── Generate only missing items ──────────────────────────────────────
         generator = GeneratorFromStrings(
-            strings=lang_texts,
-            count=text_count,
+            strings=[p['text'] for p in todo],
+            count=len(todo),
             fonts=fonts_to_use,
             size=font_size,
             language=lang,
@@ -429,63 +442,21 @@ if __name__ == "__main__":
             background_type=3,
             orientation=orietation
         )
-        count = 0
-        output_dir = 'output'
 
-        
-        for img, lbl in tqdm(generator, total=text_count, desc=f"Generating {lang} images"):
+        for (img, lbl), item in tqdm(
+                zip(generator, todo), total=len(todo), desc=f"Generating {lang} images"):
             try:
-                # Get class_name from balanced_texts
-                class_name = balanced_texts[count][1] if count < len(balanced_texts) else 'unknown'
-
-
-                # Determine output subdirectory based on separate_folders flag
-                if (json_file or isinstance(json_data, dict)) and separate_folders:
-                    if class_name:
-                        class_output_dir = os.path.join(output_dir, class_name)
-                    else:
-                        class_output_dir = os.path.join(output_dir, 'unknown')
-                else:
-                    # Save all together in one directory
-                    class_output_dir = output_dir
-                
-                image_dir = os.path.join(class_output_dir, 'images')
-                if not os.path.exists(image_dir):
-                    os.makedirs(image_dir)
-                label_dir = os.path.join(class_output_dir, 'labels')
-                if not os.path.exists(label_dir):
-                    os.makedirs(label_dir)
-                
-                img.save(os.path.join(image_dir, f'{lang}_img_{count}.png'))
-                
-                # Save label with class tag if using custom JSON and not separate folders
-                if (json_file or isinstance(json_data, dict)) and not separate_folders:
-                    label_with_class = lbl # Or f"{class_name}|{lbl}" if requested
-                else:
-                    label_with_class = lbl
-
-                
-                with open(os.path.join(label_dir, f'{lang}_img_{count}.txt'), 'w', encoding='utf-8') as f:
-                    f.write(label_with_class)
+                if img is None:
+                    continue
+                os.makedirs(os.path.dirname(item['image_path']), exist_ok=True)
+                os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
+                img.save(item['image_path'])
+                with open(item['label_path'], 'w', encoding='utf-8') as f:
+                    f.write(lbl)
             except Exception as e:
-                print(f"Error saving image {count}: {e}")
-                continue
-            count += 1
+                print(f"Error saving image {item['idx']}: {e}")
     
-    # Generate Analytics Report for the current run
-    print("\nGenerating analytics report for this run...")
-    analytics_data = collections.defaultdict(list)
-    
-    for lang, class_dict in texts_by_language.items():
-        if not class_dict:
-            continue
-        
-        # Sample from class_dict for analytics
-        for _ in range(min(text_count, 100)):
-            class_name = random.choice(list(class_dict.keys()))
-            if class_dict[class_name]:
-                text = random.choice(class_dict[class_name])
-                analytics_data[class_name].append(text)
-            
-    report_path = os.path.join(output_dir, 'run_analytics.md')
-    generate_markdown_report(dict(analytics_data), report_path)
+    run_analytics(
+        output_dir='output',
+        report_path=os.path.join('output', 'dataset_analytics.md'),
+    )

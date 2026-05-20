@@ -83,6 +83,29 @@ def _generate_horizontal_text(
     stroke_width: int = 0,
     stroke_fill: str = "#282828",
 ) -> Tuple:
+    if "\n" in text:
+        lines = [l for l in text.split("\n") if l.strip()]
+        if not lines:
+            lines = [text.replace("\n", " ")]
+        rendered = [
+            _generate_horizontal_text(
+                line, font, text_color, font_size, space_width,
+                character_spacing, fit, word_split, stroke_width, stroke_fill,
+            )
+            for line in lines
+        ]
+        max_w = max(img.size[0] for img, _ in rendered)
+        line_gap = max(4, font_size // 6)
+        total_h = sum(img.size[1] for img, _ in rendered) + line_gap * (len(rendered) - 1)
+        combined_img = Image.new("RGBA", (max_w, total_h), (0, 0, 0, 0))
+        combined_mask = Image.new("RGB", (max_w, total_h), (0, 0, 0))
+        y = 0
+        for img, mask in rendered:
+            combined_img.paste(img, (0, y), img)
+            combined_mask.paste(mask, (0, y))
+            y += img.size[1] + line_gap
+        return combined_img, combined_mask
+
     image_font = ImageFont.truetype(font=font, size=font_size)
 
     space_width = int(get_text_width(image_font, " ") * space_width)
