@@ -201,6 +201,7 @@ if __name__ == "__main__":
     parser.add_argument('--en_font', type=str, default=None, help='Path to Arial.ttf or any font file to use ONLY for English text generation')
     parser.add_argument('--double_line_prob', type=float, default=0.3, help='Probability (0-1) that a Bangla image will have two lines of text')
     parser.add_argument('--reset', action='store_true', help='Ignore saved generation plan and start from scratch')
+    parser.add_argument('--prepare_hf', action='store_true', help='Run prepare_hf_dataset.py after generation completes')
     args = parser.parse_args()
 
     language = args.language
@@ -460,3 +461,8 @@ if __name__ == "__main__":
         output_dir='output',
         report_path=os.path.join('output', 'dataset_analytics.md'),
     )
+
+    if args.prepare_hf:
+        import subprocess
+        print('\nStarting HF dataset preparation...')
+        subprocess.run([sys.executable, 'prepare_hf_dataset.py'], check=True)
