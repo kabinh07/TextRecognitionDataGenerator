@@ -234,7 +234,7 @@ def main():
     parser.add_argument('--output_dir',    default='output',
                         help='generate.py output directory with synthetic images')
     parser.add_argument('--shamadhan_dir',
-                        default='/home/kabin/nas/datasets/ocr_dataset_shamadhan',
+                        default='/app/ocr_dataset_shamadhan',
                         help='Shamadhan dataset root (contains dataset.csv + cropped_images/)')
     parser.add_argument('--dataset_dir',   default='hf_dataset',
                         help='Destination directory for the sharded dataset')

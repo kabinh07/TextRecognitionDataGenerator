@@ -6,6 +6,8 @@ services:
       - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/data
       - /mnt/truenas/datasets/synth/shamadhan_synth_ocr_200k:/app/output
       - /mnt/truenas/datasets/synth/list_data:/app/list_data
+      - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/ocr_dataset_shamadhan
+      - /mnt/truenas/datasets/ocr_dataset_shamadhan/hf_dataset:/app/hf_dataset
       - ./generate_list_data.py:/app/generate_list_data.py
       - ./generate.py:/app/generate.py
       - ./trdg/fonts:/app/trdg/fonts
