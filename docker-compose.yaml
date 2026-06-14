@@ -1,16 +1,30 @@
 services:
-  text_generator:
-    container_name: text_generator
+  combined_generator:
+    container_name: combined_generator
+    image: trdg-test:latest
     build: .
     volumes:
+      # Shamadhan NID data (nid_data_token_balanced.json / nid_data_texts.json)
       - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/data
-      - /mnt/truenas/datasets/synth/shamadhan_synth_ocr_200k:/app/output
-      - /mnt/truenas/datasets/synth/list_data:/app/list_data
-      - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/ocr_dataset_shamadhan
+      # Overlay postal_codes.csv from repo (not on NAS)
+      - ./data/postal_codes.csv:/app/data/postal_codes.csv
+      # Output directory on NAS
+      - ./output:/app/output
+      # - /mnt/truenas/datasets/synth/combined_output:/app/output
+      # HF dataset directory
       - /mnt/truenas/datasets/ocr_dataset_shamadhan/hf_dataset:/app/hf_dataset
-      - ./generate_list_data.py:/app/generate_list_data.py
-      - ./generate.py:/app/generate.py
+      # Hot-mount source files so changes don't require image rebuild
+      - ./generate_combined.py:/app/generate_combined.py
+      - ./address_generator.py:/app/address_generator.py
       - ./trdg/fonts:/app/trdg/fonts
     mem_limit: 16g
-    cpus: 8 
-    command: python3 generate.py --text_count 100000 --use_list --prepare_hf
+    cpus: 2
+    # Test run: 50 shamadhan/lang + 50 addresses = ~150 images
+    # Full run:  --text_count 5000 --address_count 10000
+    command: >
+      python3 generate_combined.py
+        --text_count 50
+        --address_count 50
+        --output_dir output
+        --font_size 11
+        --blur 0.8
