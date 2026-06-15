@@ -116,6 +116,32 @@ def _rotate_image(img, max_angle=3):
     return img_rotated.crop((pad, pad, pad + w, pad + h))
 
 
+def _apply_augraphy(img, moire_prob=0.25, fade_prob=0.35):
+    """Apply random moiré pattern and/or lighting-fade using augraphy. No-op if not installed."""
+    try:
+        from augraphy import MoirePattern, LightingGradient
+    except ImportError:
+        return img
+
+    arr = np.array(img.convert('RGB'))
+    changed = False
+
+    if random.random() < moire_prob:
+        result = MoirePattern()(arr)
+        arr = result if isinstance(result, np.ndarray) else result.get('output', arr)
+        changed = True
+
+    if random.random() < fade_prob:
+        result = LightingGradient()(arr)
+        arr = result if isinstance(result, np.ndarray) else result.get('output', arr)
+        changed = True
+
+    if not changed:
+        return img
+
+    return PILImage.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+
+
 # ── Shamadhan generation ──────────────────────────────────────────────────────
 
 def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
@@ -181,6 +207,7 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
         if img is None:
             continue
         img = _rotate_image(img)
+        img = _apply_augraphy(img)
         os.makedirs(os.path.dirname(item['image_path']), exist_ok=True)
         os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
         img.save(item['image_path'])
@@ -270,6 +297,7 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
             continue
 
         img = _rotate_image(img)
+        img = _apply_augraphy(img)
         os.makedirs(os.path.dirname(item['image_path']), exist_ok=True)
         os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
         img.save(item['image_path'])
