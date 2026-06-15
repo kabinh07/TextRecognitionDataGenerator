@@ -21,6 +21,8 @@ import re
 import collections
 import argparse
 import sys
+import numpy as np
+from PIL import Image as PILImage
 from tqdm import tqdm
 
 from trdg.generators import GeneratorFromStrings
@@ -102,7 +104,16 @@ def _rotate_image(img, max_angle=3):
     angle = random.uniform(-max_angle, max_angle)
     if abs(angle) < 0.3:
         return img
-    return img.rotate(angle, expand=True, fillcolor=(255, 255, 255))
+    w, h = img.size
+    pad = 20  # sufficient for ±3° on any image size
+    arr = np.array(img)
+    if arr.ndim == 3:
+        arr_padded = np.pad(arr, ((pad, pad), (pad, pad), (0, 0)), mode='edge')
+    else:
+        arr_padded = np.pad(arr, ((pad, pad), (pad, pad)), mode='edge')
+    img_padded = PILImage.fromarray(arr_padded)
+    img_rotated = img_padded.rotate(angle, expand=False, resample=PILImage.BILINEAR)
+    return img_rotated.crop((pad, pad, pad + w, pad + h))
 
 
 # ── Shamadhan generation ──────────────────────────────────────────────────────
