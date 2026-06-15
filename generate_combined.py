@@ -117,6 +117,9 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
     if not reset and os.path.exists(plan_path):
         print(f"  Resuming from {plan_path}")
         plan = _load_json(plan_path)
+        # Backfill: strip any newlines cached in older plan files
+        for p in plan:
+            p['text'] = ' '.join(p['text'].split())
     else:
         plan = [
             {
@@ -168,7 +171,7 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
 # ── Address generation ────────────────────────────────────────────────────────
 
 def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
-                        extra_texts=None, font_size=None):
+                        extra_texts=None, font_size=None, blur=None):
     print(f"\n── Bangla Addresses ({address_count} images) ──────────────────────")
     addr_gen = AddressGenerator(csv_path)
     print(f"  Village pool: {len(addr_gen._bn_villages):,}")
@@ -201,8 +204,9 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
     print(f"  {len(plan) - len(todo)} done, {len(todo)} remaining")
 
     for item in tqdm(todo, desc='Bangla addresses'):
-        profile_size, blur_max, skew = _pick_addr_profile()
+        profile_size, profile_blur, skew = _pick_addr_profile()
         item_font_size = font_size if font_size is not None else profile_size
+        blur_max = blur if blur is not None else profile_blur
         font = random.choice(fonts)
         img = None
         attempts = 0
@@ -399,6 +403,7 @@ def main():
         reset=args.reset,
         extra_texts=shamadhan_addr_texts if loaded_csv else None,
         font_size=args.font_size,
+        blur=args.blur,
     )
 
     # ── Analytics ─────────────────────────────────────────────────────────────
