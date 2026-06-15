@@ -100,36 +100,19 @@ def _pick_addr_profile():
 # ── Shamadhan generation ──────────────────────────────────────────────────────
 
 def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
-                        double_line_prob, output_dir, image_dir, reset):
+                        output_dir, image_dir, reset):
     print(f"\n── Shamadhan {lang.upper()} ({text_count} images) ─────────────────")
     fonts = load_fonts(lang)
     plan_path = os.path.join(output_dir, f'.plan_{lang}.json')
 
-    pool_size = text_count * 2 if (lang == 'bn' and double_line_prob > 0) else text_count
-
-    # Class-balanced pool with token balancing
+    # Class-balanced pool with token balancing (single-line only)
     text_to_class = {}
     for cn, texts in class_dict.items():
         for t in texts:
             if t and t not in text_to_class:
                 text_to_class[t] = cn
-    selected = balance_tokens(list(text_to_class.keys()), pool_size)
+    selected = balance_tokens(list(text_to_class.keys()), text_count)
     balanced = [(t, text_to_class[t]) for t in selected]
-
-    # Bangla double-line pairing
-    if lang == 'bn' and double_line_prob > 0:
-        paired = []
-        i = 0
-        while len(paired) < text_count and i < len(balanced):
-            if i + 1 < len(balanced) and random.random() < double_line_prob:
-                t1, c1 = balanced[i]
-                t2, _ = balanced[i + 1]
-                paired.append((f"{t1}\n{t2}", c1))
-                i += 2
-            else:
-                paired.append(balanced[i])
-                i += 1
-        balanced = paired[:text_count]
 
     if not reset and os.path.exists(plan_path):
         print(f"  Resuming from {plan_path}")
@@ -184,10 +167,13 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
 
 # ── Address generation ────────────────────────────────────────────────────────
 
-def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset):
+def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
+                        extra_texts=None):
     print(f"\n── Bangla Addresses ({address_count} images) ──────────────────────")
     addr_gen = AddressGenerator(csv_path)
     print(f"  Village pool: {len(addr_gen._bn_villages):,}")
+    if extra_texts:
+        print(f"  Real address pool: {len(extra_texts):,} texts from shamadhan CSV")
     fonts = load_fonts('bn')
     plan_path = os.path.join(output_dir, '.plan_addr.json')
 
@@ -195,15 +181,20 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset):
         print(f"  Resuming from {plan_path}")
         plan = _load_json(plan_path)
     else:
-        plan = [
-            {
+        real_pool = extra_texts or []
+        plan = []
+        for idx in range(address_count):
+            # 30% real shamadhan addresses (if available), 70% synthetic
+            if real_pool and random.random() < 0.3:
+                text = random.choice(real_pool)
+            else:
+                text = addr_gen.generate_bn()
+            plan.append({
                 'idx': idx,
-                'text': addr_gen.generate_bn(),
+                'text': text,
                 'image_path': os.path.join(output_dir, 'images', f'bn_addr_{idx}.png'),
                 'label_path': os.path.join(output_dir, 'labels', f'bn_addr_{idx}.txt'),
-            }
-            for idx in range(address_count)
-        ]
+            })
         _save_json(plan, plan_path)
 
     todo = [p for p in plan if not os.path.exists(p['image_path'])]
@@ -274,8 +265,6 @@ def main():
                         help='Font size for shamadhan images')
     parser.add_argument('--blur', type=float, default=0.8,
                         help='Max blur radius for shamadhan images (random 0..blur)')
-    parser.add_argument('--double_line_prob', type=float, default=0.3,
-                        help='Probability of pairing two Bangla shamadhan texts on one image')
     parser.add_argument('--output_dir', type=str, default='output')
     parser.add_argument('--csv_path', type=str, default='data/postal_codes.csv')
     parser.add_argument('--reset', action='store_true',
@@ -309,7 +298,11 @@ def main():
         os.path.join(data_path, 'merged_reviewed_latest.csv'),
         os.path.join(data_path, 'dataset.csv'),
     ]
+    # Address classes from shamadhan CSV go to address pipeline, not shamadhan
+    _ADDRESS_CLASSES = {'address_full', 'address_line_xx'}
+
     loaded_csv = False
+    shamadhan_addr_texts = []  # real address texts from CSV for address pipeline
     for csv_src in csv_candidates:
         if not os.path.exists(csv_src):
             continue
@@ -324,6 +317,13 @@ def main():
                     continue
                 label_id = row.get('labels', '').strip()
                 class_name = label_map.get(label_id, f'label_{label_id}')
+                # Address classes go to address pipeline (multi-line OK)
+                if class_name in _ADDRESS_CLASSES:
+                    shamadhan_addr_texts.append(text)
+                    row_count += 1
+                    continue
+                # All other classes: enforce single-line
+                text = ' '.join(text.split())
                 lang = detect_text_language(text)
                 if class_name == 'en_name':
                     texts_by_lang['en'].setdefault(class_name, []).extend(
@@ -333,7 +333,8 @@ def main():
                     texts_by_lang[lang].setdefault(class_name, []).append(text)
                 row_count += 1
         if row_count:
-            print(f"  {row_count:,} usable rows loaded")
+            print(f"  {row_count:,} usable rows loaded "
+                  f"({len(shamadhan_addr_texts):,} address texts routed to address pipeline)")
             loaded_csv = True
             break
 
@@ -364,6 +365,7 @@ def main():
                 texts = list(texts) + [t.upper() for t in texts if isinstance(t, str)]
             for t in texts:
                 if isinstance(t, str) and t.strip():
+                    t = ' '.join(t.split())  # enforce single-line
                     lang = detect_text_language(t)
                     texts_by_lang[lang].setdefault(class_name, []).append(t)
 
@@ -382,7 +384,6 @@ def main():
                 text_count=args.text_count,
                 font_size=args.font_size,
                 blur=args.blur,
-                double_line_prob=args.double_line_prob,
                 output_dir=args.output_dir,
                 image_dir=image_dir,
                 reset=args.reset,
@@ -395,6 +396,7 @@ def main():
         output_dir=args.output_dir,
         image_dir=image_dir,
         reset=args.reset,
+        extra_texts=shamadhan_addr_texts if loaded_csv else None,
     )
 
     # ── Analytics ─────────────────────────────────────────────────────────────
