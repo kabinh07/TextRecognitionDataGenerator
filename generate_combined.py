@@ -13,6 +13,7 @@ No list_data used.
 """
 
 import os
+import csv
 import json
 import random
 import math
@@ -291,29 +292,80 @@ def main():
 
     # ── Load shamadhan data ────────────────────────────────────────────────────
     data_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        os.path.join(data_dir, 'data', 'nid_data_token_balanced.json'),
-        os.path.join(data_dir, 'data', 'nid_data_texts.json'),
-    ]
-    json_data = None
-    for path in candidates:
-        if os.path.exists(path):
-            print(f"Loading shamadhan data: {path}")
-            json_data = _load_json(path)
-            break
-    if json_data is None:
-        print("ERROR: No shamadhan JSON found (nid_data_token_balanced.json / nid_data_texts.json)")
-        sys.exit(1)
+    data_path = os.path.join(data_dir, 'data')
 
-    # Group texts by detected language
+    # Build label_id → class_name map from label_mappings.csv if present
+    label_map = {}
+    mappings_path = os.path.join(data_path, 'label_mappings.csv')
+    if os.path.exists(mappings_path):
+        with open(mappings_path, encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                label_map[row['label_id'].strip()] = row['label_name'].strip()
+        print(f"Loaded {len(label_map)} label mappings from {mappings_path}")
+
+    # Try CSV sources first (merged_reviewed_latest.csv → dataset.csv)
     texts_by_lang = {'bn': {}, 'en': {}}
-    for class_name, texts in json_data.items():
-        if class_name == 'name_en':
-            texts = list(texts) + [t.upper() for t in texts if isinstance(t, str)]
-        for t in texts:
-            if isinstance(t, str) and t.strip():
-                lang = detect_text_language(t)
-                texts_by_lang[lang].setdefault(class_name, []).append(t)
+    csv_candidates = [
+        os.path.join(data_path, 'merged_reviewed_latest.csv'),
+        os.path.join(data_path, 'dataset.csv'),
+    ]
+    loaded_csv = False
+    for csv_src in csv_candidates:
+        if not os.path.exists(csv_src):
+            continue
+        print(f"Loading shamadhan data: {csv_src}")
+        row_count = 0
+        with open(csv_src, encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                if row.get('disabled', '').strip():
+                    continue
+                text = (row.get('corrected_labels') or '').strip()
+                if not text:
+                    continue
+                label_id = row.get('labels', '').strip()
+                class_name = label_map.get(label_id, f'label_{label_id}')
+                lang = detect_text_language(text)
+                if class_name == 'en_name':
+                    texts_by_lang['en'].setdefault(class_name, []).extend(
+                        [text, text.upper()]
+                    )
+                else:
+                    texts_by_lang[lang].setdefault(class_name, []).append(text)
+                row_count += 1
+        if row_count:
+            print(f"  {row_count:,} usable rows loaded")
+            loaded_csv = True
+            break
+
+    # Fallback: try legacy JSON sources
+    if not loaded_csv:
+        json_candidates = [
+            os.path.join(data_path, 'nid_data_token_balanced.json'),
+            os.path.join(data_path, 'nid_data_texts.json'),
+        ]
+        json_data = None
+        for path in json_candidates:
+            if os.path.exists(path):
+                print(f"Loading shamadhan data: {path}")
+                json_data = _load_json(path)
+                break
+        if json_data is None:
+            print("ERROR: No shamadhan data found. Files in data/:")
+            if os.path.isdir(data_path):
+                for f in sorted(os.listdir(data_path)):
+                    fpath = os.path.join(data_path, f)
+                    size = os.path.getsize(fpath) if os.path.isfile(fpath) else 0
+                    print(f"  {f}  ({size:,} bytes)")
+            else:
+                print(f"  data/ directory not found at {data_path}")
+            sys.exit(1)
+        for class_name, texts in json_data.items():
+            if class_name == 'name_en':
+                texts = list(texts) + [t.upper() for t in texts if isinstance(t, str)]
+            for t in texts:
+                if isinstance(t, str) and t.strip():
+                    lang = detect_text_language(t)
+                    texts_by_lang[lang].setdefault(class_name, []).append(t)
 
     print("\nShamadhan class distribution:")
     for lang in ['bn', 'en']:

@@ -4,10 +4,10 @@ services:
     image: trdg-test:latest
     build: .
     volumes:
-      # Shamadhan NID data (nid_data_token_balanced.json / nid_data_texts.json)
+      # Shamadhan NID data (dataset.csv / merged_reviewed_latest.csv / label_mappings.csv)
       - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/data
-      # Overlay postal_codes.csv from repo (not on NAS)
-      - ./data/postal_codes.csv:/app/data/postal_codes.csv
+      # postal_codes.csv mounted separately to avoid NAS directory collision
+      - ./data/postal_codes.csv:/app/postal_codes.csv
       # Output directory on NAS
       - ./output:/app/output
       # - /mnt/truenas/datasets/synth/combined_output:/app/output
@@ -28,3 +28,4 @@ services:
         --output_dir output
         --font_size 11
         --blur 0.8
+        --csv_path /app/postal_codes.csv
