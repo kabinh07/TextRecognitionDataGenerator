@@ -80,21 +80,29 @@ def balance_tokens(texts, target_count):
 
 
 # ── Address quality profiles ──────────────────────────────────────────────────
-# (name, weight, font_size_min, font_size_max, blur_max, skew_angle)
+# (name, weight, font_size_min, font_size_max, blur_max)
 # Text always black; background_type=3 (trdg/images/).
+# Rotation is applied post-generation via _rotate_image(), not by trdg.
 
 _ADDR_PROFILES = [
-    ('normal',  25, 32, 40, 0, 2),
-    ('medium',  40, 22, 31, 1, 2),
-    ('low_res', 35, 14, 21, 1, 3),
+    ('normal',  25, 32, 40, 0),
+    ('medium',  40, 22, 31, 1),
+    ('low_res', 35, 14, 21, 1),
 ]
 _ADDR_WEIGHTS = [p[1] for p in _ADDR_PROFILES]
 
 
 def _pick_addr_profile():
     p = random.choices(_ADDR_PROFILES, weights=_ADDR_WEIGHTS, k=1)[0]
-    _, _, fs_min, fs_max, blur_max, skew = p
-    return random.randint(fs_min, fs_max), blur_max, skew
+    _, _, fs_min, fs_max, blur_max = p
+    return random.randint(fs_min, fs_max), blur_max
+
+
+def _rotate_image(img, max_angle=3):
+    angle = random.uniform(-max_angle, max_angle)
+    if abs(angle) < 0.3:
+        return img
+    return img.rotate(angle, expand=True, fillcolor=(255, 255, 255))
 
 
 # ── Shamadhan generation ──────────────────────────────────────────────────────
@@ -145,8 +153,8 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
         fonts=fonts,
         size=font_size,
         language=lang,
-        skewing_angle=3,
-        random_skew=True,
+        skewing_angle=0,
+        random_skew=False,
         distorsion_type=0,
         blur=blur,
         random_blur=True,
@@ -161,6 +169,7 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
                                   desc=f'Shamadhan {lang.upper()}'):
         if img is None:
             continue
+        img = _rotate_image(img)
         os.makedirs(os.path.dirname(item['image_path']), exist_ok=True)
         os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
         img.save(item['image_path'])
@@ -204,7 +213,7 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
     print(f"  {len(plan) - len(todo)} done, {len(todo)} remaining")
 
     for item in tqdm(todo, desc='Bangla addresses'):
-        profile_size, profile_blur, skew = _pick_addr_profile()
+        profile_size, profile_blur = _pick_addr_profile()
         item_font_size = font_size if font_size is not None else profile_size
         blur_max = blur if blur is not None else profile_blur
         font = random.choice(fonts)
@@ -219,8 +228,8 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
                 out_dir=None,
                 size=item_font_size,
                 extension=None,
-                skewing_angle=skew,
-                random_skew=True,
+                skewing_angle=0,
+                random_skew=False,
                 blur=blur_max,
                 random_blur=True,
                 background_type=3,
@@ -249,6 +258,7 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
             print(f"  WARNING: skipped addr idx={item['idx']}")
             continue
 
+        img = _rotate_image(img)
         os.makedirs(os.path.dirname(item['image_path']), exist_ok=True)
         os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
         img.save(item['image_path'])
