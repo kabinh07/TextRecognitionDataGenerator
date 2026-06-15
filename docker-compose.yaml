@@ -27,5 +27,5 @@ services:
         --address_count 50
         --output_dir output
         --font_size 11
-        --blur 0.8
+        --blur 0.3
         --csv_path /app/postal_codes.csv
