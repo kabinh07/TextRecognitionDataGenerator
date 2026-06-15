@@ -168,7 +168,7 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
 # ── Address generation ────────────────────────────────────────────────────────
 
 def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
-                        extra_texts=None):
+                        extra_texts=None, font_size=None):
     print(f"\n── Bangla Addresses ({address_count} images) ──────────────────────")
     addr_gen = AddressGenerator(csv_path)
     print(f"  Village pool: {len(addr_gen._bn_villages):,}")
@@ -201,7 +201,8 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
     print(f"  {len(plan) - len(todo)} done, {len(todo)} remaining")
 
     for item in tqdm(todo, desc='Bangla addresses'):
-        font_size, blur_max, skew = _pick_addr_profile()
+        profile_size, blur_max, skew = _pick_addr_profile()
+        item_font_size = font_size if font_size is not None else profile_size
         font = random.choice(fonts)
         img = None
         attempts = 0
@@ -212,7 +213,7 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
                 text=item['text'],
                 font=font,
                 out_dir=None,
-                size=font_size,
+                size=item_font_size,
                 extension=None,
                 skewing_angle=skew,
                 random_skew=True,
@@ -236,7 +237,7 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
                 image_dir=image_dir,
             )
             if img is None:
-                font_size = min(font_size + 4, 32)
+                item_font_size = max(item_font_size + 4, 32)
                 blur_max = 0
             attempts += 1
 
@@ -397,6 +398,7 @@ def main():
         image_dir=image_dir,
         reset=args.reset,
         extra_texts=shamadhan_addr_texts if loaded_csv else None,
+        font_size=args.font_size,
     )
 
     # ── Analytics ─────────────────────────────────────────────────────────────
