@@ -116,7 +116,7 @@ def _rotate_image(img, max_angle=3):
     return img_rotated.crop((pad, pad, pad + w, pad + h))
 
 
-def _apply_augraphy(img, moire_prob=0.25, fade_prob=0.35):
+def _apply_augraphy(img, moire_prob=0.8, fade_prob=0.8):
     """Apply random moiré pattern and/or lighting-fade using augraphy. No-op if not installed."""
     try:
         from augraphy import MoirePattern, LightingGradient
