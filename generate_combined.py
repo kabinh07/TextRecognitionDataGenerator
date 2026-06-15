@@ -100,6 +100,136 @@ def _pick_addr_profile():
     return random.randint(fs_min, fs_max), blur_max
 
 
+# ── Synthetic text augmentation ───────────────────────────────────────────────
+
+_BN_MONTHS = [
+    'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
+    'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর',
+]
+_EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+_RE_EN_DIGIT  = re.compile(r'^[0-9]+$')
+_RE_EN_SPACED = re.compile(r'^[0-9]+( [0-9]+)+$')
+_RE_BN_DIGIT  = re.compile(r'^[০-৯]+$')
+_RE_BN_SPACED = re.compile(r'^[০-৯]+( [০-৯]+)+$')
+_RE_EN_DOB    = re.compile(
+    r'^(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})$',
+    re.I,
+)
+_RE_SLASH_DOB = re.compile(r'^\d{1,2}/\d{1,2}/\d{4}$')
+_RE_DASH_DOB  = re.compile(r'^\d{1,2}-\d{1,2}-\d{4}$')
+_RE_BN_DOB    = re.compile(
+    r'^[০-৯]{1,2}\s+(' + '|'.join(_BN_MONTHS) + r')\s+[০-৯]{4}$'
+)
+
+_NAME_CLASSES = {'bn_name', 'en_name', 'father_name', 'mother_name'}
+
+
+def _to_bn_digit(s):
+    return s.translate(str.maketrans('0123456789', '০১২৩৪৫৬৭৮৯'))
+
+
+def _detect_nid_formats(texts):
+    fmts = []
+    for t in texts:
+        t = t.strip()
+        if _RE_EN_SPACED.match(t):
+            fmts.append(('en_spaced', tuple(len(g) for g in t.split())))
+        elif _RE_EN_DIGIT.match(t):
+            fmts.append(('en_num', len(t)))
+        elif _RE_BN_SPACED.match(t):
+            fmts.append(('bn_spaced', tuple(len(g) for g in t.split())))
+        elif _RE_BN_DIGIT.match(t):
+            fmts.append(('bn_num', len(t)))
+    return fmts or [('en_num', 10), ('en_num', 13)]
+
+
+def _gen_nid(fmt):
+    kind, spec = fmt
+    n = sum(spec) if isinstance(spec, tuple) else spec
+    digits = [str(random.randint(0, 9)) for _ in range(n)]
+    if kind in ('en_num', 'bn_num'):
+        s = ''.join(digits)
+        return _to_bn_digit(s) if kind == 'bn_num' else s
+    out, i = [], 0
+    for size in spec:
+        chunk = ''.join(digits[i:i + size])
+        out.append(_to_bn_digit(chunk) if kind == 'bn_spaced' else chunk)
+        i += size
+    return ' '.join(out)
+
+
+def _detect_dob_formats(texts):
+    fmts = set()
+    for t in texts:
+        t = t.strip()
+        m = _RE_EN_DOB.match(t)
+        if m:
+            fmts.add('en_text_zero' if len(m.group(1)) == 2 else 'en_text')
+        elif _RE_SLASH_DOB.match(t):
+            fmts.add('slash')
+        elif _RE_DASH_DOB.match(t):
+            fmts.add('dash')
+        elif _RE_BN_DOB.match(t):
+            fmts.add('bn_text')
+    return list(fmts) or ['en_text', 'slash']
+
+
+def _gen_dob(fmt):
+    d = random.randint(1, 28)
+    m = random.randint(1, 12)
+    y = random.randint(1950, 2005)
+    if fmt == 'en_text':
+        return f"{d} {_EN_MONTHS[m - 1]} {y}"
+    if fmt == 'en_text_zero':
+        return f"{d:02d} {_EN_MONTHS[m - 1]} {y}"
+    if fmt == 'slash':
+        return f"{d:02d}/{m:02d}/{y}"
+    if fmt == 'dash':
+        return f"{d:02d}-{m:02d}-{y}"
+    if fmt == 'bn_text':
+        return f"{_to_bn_digit(str(d))} {_BN_MONTHS[m - 1]} {_to_bn_digit(str(y))}"
+    return f"{d:02d}/{m:02d}/{y}"
+
+
+def _augment_class_dict(class_dict, target_per_class, is_english=False):
+    """Expand each class to target_per_class using synthetic generation."""
+    result = {k: list(v) for k, v in class_dict.items()}
+
+    # Names — split real names into tokens, recombine randomly
+    for cls in _NAME_CLASSES:
+        if cls not in result or len(result[cls]) >= target_per_class:
+            continue
+        tokens = list(set(
+            part for name in result[cls]
+            for part in name.strip().split() if len(part) > 1
+        ))
+        if not tokens:
+            continue
+        needed = target_per_class - len(result[cls])
+        for _ in range(needed):
+            n = random.randint(1, min(3, len(tokens)))
+            name = ' '.join(random.sample(tokens, n))
+            result[cls].append(name.upper() if is_english else name)
+
+    # NID numbers — detect length/grouping formats, generate synthetics
+    if 'nid_number' in result and len(result['nid_number']) < target_per_class:
+        fmts = _detect_nid_formats(result['nid_number'])
+        needed = target_per_class - len(result['nid_number'])
+        for _ in range(needed):
+            result['nid_number'].append(_gen_nid(random.choice(fmts)))
+
+    # Dates of birth — detect date formats, generate synthetics
+    if 'date_of_birth' in result and len(result['date_of_birth']) < target_per_class:
+        fmts = _detect_dob_formats(result['date_of_birth'])
+        needed = target_per_class - len(result['date_of_birth'])
+        for _ in range(needed):
+            result['date_of_birth'].append(_gen_dob(random.choice(fmts)))
+
+    return result
+
+
 def _rotate_image(img, max_angle=3):
     angle = random.uniform(-max_angle, max_angle)
     if abs(angle) < 0.3:
@@ -423,11 +553,27 @@ def main():
                     lang = detect_text_language(t)
                     texts_by_lang[lang].setdefault(class_name, []).append(t)
 
-    print("\nShamadhan class distribution:")
+    print("\nShamadhan class distribution (before augmentation):")
     for lang in ['bn', 'en']:
         if texts_by_lang[lang]:
             total = sum(len(v) for v in texts_by_lang[lang].values())
             print(f"  {lang.upper()}: {len(texts_by_lang[lang])} classes, {total:,} texts")
+
+    # ── Synthetic augmentation ─────────────────────────────────────────────────
+    # Expand name/NID/DOB pools so text_count can be met from diverse samples.
+    synth_target = max(500, args.text_count * 3)
+    print(f"\nAugmenting to {synth_target} samples per class...")
+    for lang in ['bn', 'en']:
+        if not texts_by_lang[lang]:
+            continue
+        before = {k: len(v) for k, v in texts_by_lang[lang].items()}
+        texts_by_lang[lang] = _augment_class_dict(
+            texts_by_lang[lang], synth_target, is_english=(lang == 'en')
+        )
+        for cls, cnt_before in sorted(before.items()):
+            cnt_after = len(texts_by_lang[lang][cls])
+            if cnt_after > cnt_before:
+                print(f"  [{lang.upper()}] {cls}: {cnt_before:,} → {cnt_after:,} (+{cnt_after - cnt_before:,})")
 
     # ── Generate shamadhan images ──────────────────────────────────────────────
     for lang in ['bn', 'en']:
