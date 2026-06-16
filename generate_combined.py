@@ -599,6 +599,10 @@ def main():
                         help='Ignore saved plans and restart from scratch')
     parser.add_argument('--prepare_hf', action='store_true',
                         help='Run prepare_hf_dataset.py after generation')
+    parser.add_argument('--shamadhan_dir', type=str, default='/app/data',
+                        help='Real shamadhan image dir for prepare_hf_dataset.py')
+    parser.add_argument('--hf_dir', type=str, default='/app/hf_dataset',
+                        help='Output HuggingFace dataset dir for prepare_hf_dataset.py')
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -765,7 +769,12 @@ def main():
 
     if args.prepare_hf:
         import subprocess
-        subprocess.run([sys.executable, 'prepare_hf_dataset.py'], check=True)
+        subprocess.run([
+            sys.executable, 'prepare_hf_dataset.py',
+            '--output_dir', args.output_dir,
+            '--shamadhan_dir', args.shamadhan_dir,
+            '--dataset_dir', args.hf_dir,
+        ], check=True)
 
     img_dir = os.path.join(args.output_dir, 'images')
     total = len([f for f in os.listdir(img_dir) if f.endswith('.png')]) if os.path.isdir(img_dir) else 0
