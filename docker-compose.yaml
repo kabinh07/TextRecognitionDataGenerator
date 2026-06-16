@@ -9,8 +9,8 @@ services:
       # postal_codes.csv mounted separately to avoid NAS directory collision
       - ./data/postal_codes.csv:/app/postal_codes.csv
       # Output directory on NAS
-      # - ./output:/app/output
-      - /mnt/truenas/datasets/synth/combined_output:/app/output
+      - ./output:/app/output
+      # - /mnt/truenas/datasets/synth/combined_output:/app/output
       # HF dataset directory
       - /mnt/truenas/datasets/ocr_dataset_shamadhan/hf_dataset:/app/hf_dataset
       # Hot-mount source files so changes don't require image rebuild

@@ -230,6 +230,150 @@ def _augment_class_dict(class_dict, target_per_class, is_english=False):
     return result
 
 
+# ── Bangla character coverage ─────────────────────────────────────────────────
+# Target: every commonly-used char in U+0980–U+09FF should appear in training.
+# Chars covered: all vowels, all consonants (incl. ৎ ড় ঢ় য়), all vowel
+# diacritics, ঁ ং ঃ ্, and a broad set of conjuncts (যুক্তাক্ষর).
+
+_BN_TARGET_CHARS = set(
+    'ঁংঃ'                                      # ঁ ং ঃ
+    'অআইঈউঊঋ'             # অ আ ই ঈ উ ঊ ঋ
+    'এঐওঔ'                                # এ ঐ ও ঔ
+    'কখগঘঙ'                         # ক খ গ ঘ ঙ
+    'চছজঝঞ'                         # চ ছ জ ঝ ঞ
+    'টঠডঢণ'                         # ট ঠ ড ঢ ণ
+    'তথদধন'                         # ত থ দ ধ ন
+    'পফবভম'                         # প ফ ব ভ ম
+    'যরল'                                     # য র ল
+    'শষসহ'                               # শ ষ স হ
+    '়'                                                  # ় (nukta)
+    'ািীুূৃ'                  # া ি ী ু ূ ৃ
+    'েৈোৌ্'                         # ে ৈ ো ৌ ্
+    'ৎ'                                                  # ৎ
+    '০১২৩৪'                         # ০ ১ ২ ৩ ৪
+    '৫৬৭৮৯'                         # ৫ ৬ ৭ ৮ ৯
+)
+
+_BN_COVERAGE_WORDS = [
+    # ৎ (khanda ta) — key missing char
+    "হঠাৎ", "অকস্মাৎ", "বাৎসরিক", "তৎক্ষণাৎ", "তৎপর",
+    "তৎকাল", "তৎসম", "মাৎস্য", "সাৎ", "কাৎলা",
+    "নিমেষাৎ", "সহসাৎ", "তৎপরতা",
+    # ঁ (chandrabindu)
+    "চাঁদ", "বাঁশ", "গাঁও", "হাঁটা", "পাঁচ",
+    "তাঁত", "মাঁ", "চাঁপা", "কাঁচ", "বাঁকা",
+    "ধাঁধা", "সাঁতার", "পাঁজর", "হাঁস", "ঘাঁটি",
+    "কাঁদা", "বাঁধ", "সাঁঝ",
+    # ঃ (visarga)
+    "দুঃখ", "নিঃশ্বাস", "প্রাতঃ", "অতঃপর",
+    "পুনঃ", "বস্তুতঃ", "মূলতঃ", "সংক্ষেপতঃ",
+    # ড় ঢ় য়
+    "বড়", "ঘোড়া", "পড়া", "বাড়ি", "ভাড়া",
+    "গড়", "পাড়া", "জুড়ি", "চড়া", "ছাড়া",
+    "ওড়া", "নড়া", "তাড়া", "আড়াল",
+    "ময়না", "রায়", "ছায়া", "নয়ন", "দয়া",
+    "ভয়", "জয়", "সয়",
+    # ৃ (ri-kar) — often missing
+    "ঋতু", "ঋণ", "কৃষক", "কৃষি", "তৃণ",
+    "গৃহ", "মৃত্যু", "বৃষ্টি", "হৃদয়", "নৃত্য",
+    "পৃথিবী", "তৃতীয়", "ঘৃণা", "কৃত্রিম",
+    "শৃঙ্খল", "বৃত্তান্ত", "কৃতজ্ঞ",
+    # Vowels (standalone)
+    "অথবা", "আকাশ", "ইচ্ছা", "ঈদ", "উৎসব",
+    "ঊষা", "ঋষি", "এখন", "ঐতিহ্য", "ওষুধ", "ঔষধ",
+    # All vowel diacritics in context
+    "কাজ", "কিছু", "নীল", "কুল", "ভূমি",
+    "কৃষি", "দেশ", "বৈদ্য", "বোন", "মৌসুম",
+    # ক্ষ conjunct
+    "ক্ষমা", "ক্ষতি", "ক্ষমতা", "শিক্ষা", "লক্ষ্য",
+    "দক্ষতা", "রক্ষণ", "বিক্ষিপ্ত", "প্রতিরক্ষা",
+    # জ্ঞ conjunct
+    "জ্ঞান", "বিজ্ঞান", "প্রজ্ঞা", "কৃতজ্ঞ",
+    "সংজ্ঞা", "বিজ্ঞপ্তি", "অজ্ঞতা",
+    # ষ-conjuncts
+    "কষ্ট", "নষ্ট", "শ্রেষ্ঠ", "পরিষ্কার",
+    "ষষ্ঠ", "ষড়যন্ত্র", "ষোল", "বিষয়",
+    # ত্ত ন্ন
+    "উত্তর", "সত্ত্ব", "অন্ন", "পান্না",
+    # ল্ল
+    "উল্লাস", "আল্লাহ", "কল্লোল",
+    # ম্ম
+    "সম্মান", "সম্মতি",
+    # হ্ন হ্ম
+    "চিহ্ন", "ব্রহ্ম", "ব্রহ্মপুত্র",
+    # র-ফলা (্র) conjuncts
+    "প্রথম", "প্রতিষ্ঠান", "পত্র", "ত্রুটি",
+    "দ্রুত", "শ্রম", "শ্রেণি", "ক্রয়",
+    "গ্রাম", "ভ্রমণ", "মন্ত্র", "আক্রমণ",
+    # য-ফলা (্য) conjuncts
+    "ব্যবহার", "ব্যক্তি", "বিদ্যা", "বিদ্যালয়",
+    "সত্য", "নিত্য", "ভাগ্য", "স্বাস্থ্য",
+    # স্ত স্থ
+    "স্তর", "স্থান", "স্থাপন", "স্পষ্ট",
+    # ব্ল ফ্ল স্ক
+    "ব্লক", "ফ্ল্যাট", "স্কুল",
+    # ন্ত ন্দ ন্ধ
+    "শান্ত", "অন্ত", "বন্দর", "সন্দেহ",
+    "গন্ধ", "সন্ধ্যা", "বন্ধু",
+    # ঞ্চ ঞ্জ
+    "পঞ্চম", "বঞ্চিত", "গঞ্জ", "কুঞ্জ", "অঞ্জলি",
+    # ণ্ট ণ্ড
+    "ঘণ্টা", "কণ্ঠ", "মণ্ডল",
+    # ব্দ ব্ধ
+    "শব্দ", "লব্ধ", "সিদ্ধ",
+    # শ্ব শ্ন
+    "বিশ্ব", "অশ্ব", "প্রশ্ন", "কৃষ্ণ",
+    # ক্ত
+    "মুক্ত", "রক্ত", "ভক্তি",
+    # ত্ব
+    "সত্ব", "কর্তৃত্ব", "স্বাধীনতা",
+    # ঙ ঞ standalone coverage
+    "রং", "ঢং", "আঙ্গুর", "ভাঙ্গা",
+    "মাঞ্জা", "পঞ্চ",
+    # ষ ণ standalone
+    "ষোল", "ষাট", "প্রাণ", "বর্ণ", "রণ",
+    # Bangla digits (all 10)
+    "০১২৩৪৫৬৭৮৯",
+    # Common NID-context words with diverse chars
+    "জাতীয়তা", "নাগরিকত্ব", "জন্মনিবন্ধন",
+    "স্বাক্ষর", "পরিচয়পত্র",
+    "বাংলাদেশ", "ঢাকা", "চট্টগ্রাম",
+    "ময়মনসিংহ", "টাঙ্গাইল", "ফরিদপুর",
+    "সংস্কৃতি", "বিশ্ববিদ্যালয়",
+    # Names common in NID with rare chars
+    "আব্দুল", "আক্তার", "মোস্তফা",
+    "আফতাব", "মুহম্মদ", "রহমান",
+    # চ্ছ
+    "বিচ্ছেদ", "উচ্ছেদ", "সচ্ছল",
+]
+
+
+def _report_bn_coverage(texts_by_class):
+    import unicodedata
+    covered = set()
+    for texts in texts_by_class.values():
+        for t in texts:
+            covered.update(unicodedata.normalize('NFC', t))
+    missing = _BN_TARGET_CHARS - covered
+    if missing:
+        chars_str = ' '.join(
+            f'{c}(U+{ord(c):04X})' for c in sorted(missing)
+        )
+        print(f"  Missing {len(missing)} Bangla chars: {chars_str}")
+    else:
+        print("  All target Bangla chars covered.")
+    return missing
+
+
+def _inject_char_coverage(bn_class_dict, min_reps=30):
+    """Add coverage words to 'char_coverage' class so rare chars are rendered."""
+    pool = _BN_COVERAGE_WORDS * min_reps
+    random.shuffle(pool)
+    bn_class_dict['char_coverage'] = pool
+    print(f"  Injected char_coverage class: {len(pool):,} texts "
+          f"({len(_BN_COVERAGE_WORDS)} unique × {min_reps} reps)")
+
+
 def _rotate_image(img, max_angle=3):
     angle = random.uniform(-max_angle, max_angle)
     if abs(angle) < 0.3:
@@ -574,6 +718,14 @@ def main():
             cnt_after = len(texts_by_lang[lang][cls])
             if cnt_after > cnt_before:
                 print(f"  [{lang.upper()}] {cls}: {cnt_before:,} → {cnt_after:,} (+{cnt_after - cnt_before:,})")
+
+    # ── Bangla character coverage injection ───────────────────────────────────
+    if texts_by_lang['bn']:
+        print("\nBangla character coverage (before injection):")
+        _report_bn_coverage(texts_by_lang['bn'])
+        _inject_char_coverage(texts_by_lang['bn'], min_reps=30)
+        print("Bangla character coverage (after injection):")
+        _report_bn_coverage(texts_by_lang['bn'])
 
     # ── Generate shamadhan images ──────────────────────────────────────────────
     for lang in ['bn', 'en']:
