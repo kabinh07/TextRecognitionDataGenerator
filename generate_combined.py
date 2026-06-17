@@ -465,7 +465,8 @@ _BN_CONFUSION_CHARS = {
 }
 
 
-def _generate_confusion_data(confusion_count, output_dir, image_dir, reset):
+def _generate_confusion_data(confusion_count, output_dir, image_dir, reset,
+                             font_size=11, blur=0.3):
     """Generate images targeting visually similar Bangla character pairs."""
     print(f"\n── Confusion-pair training ({confusion_count}/char × "
           f"{len(_BN_CONFUSION_CHARS)} chars) ────────────")
@@ -482,19 +483,10 @@ def _generate_confusion_data(confusion_count, output_dir, image_dir, reset):
         for char, words in _BN_CONFUSION_CHARS.items():
             for _ in range(confusion_count):
                 word = random.choice(words)
-                # Vary font size: small (12-20), medium (22-36), large (38-54)
-                size_band = random.choices(['s', 'm', 'l'], weights=[3, 5, 2])[0]
-                if size_band == 's':
-                    fs = random.randint(12, 20)
-                elif size_band == 'm':
-                    fs = random.randint(22, 36)
-                else:
-                    fs = random.randint(38, 54)
                 plan.append({
                     'idx': idx,
                     'text': word,
                     'char': char,
-                    'font_size': fs,
                     'image_path': os.path.join(
                         output_dir, 'images', f'bn_conf_{idx}.png'),
                     'label_path': os.path.join(
@@ -516,11 +508,11 @@ def _generate_confusion_data(confusion_count, output_dir, image_dir, reset):
                 text=item['text'],
                 font=font,
                 out_dir=None,
-                size=item['font_size'],
+                size=font_size,
                 extension=None,
                 skewing_angle=0,
                 random_skew=False,
-                blur=random.randint(0, 1),
+                blur=blur,
                 random_blur=True,
                 background_type=3,
                 distorsion_type=0,
@@ -536,7 +528,7 @@ def _generate_confusion_data(confusion_count, output_dir, image_dir, reset):
                 margins=(5, 5, 5, 5),
                 fit=True,
                 output_mask=False,
-                word_split=False,
+                word_split=True,
                 image_dir=image_dir,
                 stroke_width=0,
                 stroke_fill='#282828',
@@ -785,6 +777,8 @@ def main():
                         help='Run prepare_hf_dataset.py after generation')
     parser.add_argument('--reset_hf', action='store_true',
                         help='Pass --reset to prepare_hf_dataset.py (force rebuild sample lists)')
+    parser.add_argument('--reset_confusion', action='store_true',
+                        help='Regenerate confusion images only (safe: leaves shamadhan/addr plans intact)')
     parser.add_argument('--shamadhan_dir', type=str, default='/app/data',
                         help='Real shamadhan image dir for prepare_hf_dataset.py')
     parser.add_argument('--hf_dir', type=str, default='/app/hf_dataset',
@@ -949,7 +943,9 @@ def main():
             confusion_count=args.confusion_count,
             output_dir=args.output_dir,
             image_dir=image_dir,
-            reset=args.reset,
+            reset=args.reset or args.reset_confusion,
+            font_size=args.font_size,
+            blur=args.blur,
         )
 
     # ── Analytics ─────────────────────────────────────────────────────────────

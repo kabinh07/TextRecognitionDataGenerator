@@ -42,6 +42,7 @@ services:
       - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/data
       - ./data/postal_codes.csv:/app/postal_codes.csv
       - /mnt/truenas/datasets/synth/combined_output:/app/output
+      # - ./output:/app/output
       - /mnt/truenas/datasets/ocr_dataset_shamadhan/hf_dataset:/app/hf_dataset
       - ./generate_combined.py:/app/generate_combined.py
       - ./address_generator.py:/app/address_generator.py
@@ -50,15 +51,18 @@ services:
     cpus: 2
     # Generates ONLY confusion-pair data (text_count/address_count=0 skips
     # shamadhan+address), then rebuilds the HF dataset.
-    # No --reset: existing images are preserved.
+    # --reset_confusion: only resets confusion plan, shamadhan/addr plans untouched.
     command: >
       python3 generate_combined.py
         --text_count 0
         --address_count 0
         --output_dir /app/output
+        --font_size 11
+        --blur 0.3
         --csv_path /app/postal_codes.csv
         --shamadhan_dir /app/data
         --hf_dir /app/hf_dataset
         --confusion_count 300
+        --reset_confusion
         --prepare_hf
         --reset_hf
