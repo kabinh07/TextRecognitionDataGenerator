@@ -37,6 +37,7 @@ services:
   confusion_generator:
     container_name: confusion_generator
     image: trdg-test:latest
+    build: .
     volumes:
       - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/data
       - ./data/postal_codes.csv:/app/postal_codes.csv
