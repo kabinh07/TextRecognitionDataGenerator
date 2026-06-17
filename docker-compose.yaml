@@ -33,3 +33,30 @@ services:
         --hf_dir /app/hf_dataset
         --prepare_hf
         --reset
+
+  confusion_generator:
+    container_name: confusion_generator
+    image: trdg-test:latest
+    volumes:
+      - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/data
+      - ./data/postal_codes.csv:/app/postal_codes.csv
+      - /mnt/truenas/datasets/synth/combined_output:/app/output
+      - /mnt/truenas/datasets/ocr_dataset_shamadhan/hf_dataset:/app/hf_dataset
+      - ./generate_combined.py:/app/generate_combined.py
+      - ./address_generator.py:/app/address_generator.py
+      - ./trdg/fonts:/app/trdg/fonts
+    mem_limit: 8g
+    cpus: 2
+    # Generates ONLY confusion-pair data (text_count/address_count=0 skips
+    # shamadhan+address), then rebuilds the HF dataset.
+    # No --reset: existing images are preserved.
+    command: >
+      python3 generate_combined.py
+        --text_count 0
+        --address_count 0
+        --output_dir /app/output
+        --csv_path /app/postal_codes.csv
+        --shamadhan_dir /app/data
+        --hf_dir /app/hf_dataset
+        --confusion_count 300
+        --prepare_hf

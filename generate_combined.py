@@ -374,6 +374,187 @@ def _inject_char_coverage(bn_class_dict, min_reps=30):
           f"({len(_BN_COVERAGE_WORDS)} unique × {min_reps} reps)")
 
 
+# ── Confusion-pair training data ─────────────────────────────────────────────
+# Short Bangla words that isolate visually similar characters so the model
+# learns to distinguish them. Each key is the target character; value is a
+# list of short words (≤3 syllables) where that character is prominent.
+
+_BN_CONFUSION_CHARS = {
+    # ── ঝ vs খ ────────────────────────────────────────────────────────────────
+    'ঝ': ['ঝড়', 'ঝুড়ি', 'ঝামেলা', 'ঝরনা', 'ঝাঁপ', 'মাঝি', 'ঝলক', 'ঝুলন',
+           'ঝিল', 'ঝাড়', 'ঝোপ', 'ঝাঁজ'],
+    'খ': ['খবর', 'খাবার', 'খেলা', 'খুশি', 'খরচ', 'দেখা', 'রাখা', 'খামার',
+           'খালি', 'খোলা', 'খাতা', 'খানা'],
+    # ── ণ vs ন ────────────────────────────────────────────────────────────────
+    'ণ': ['গণনা', 'বর্ণ', 'প্রাণ', 'ঘণ্টা', 'পণ', 'রণ', 'মণ', 'গণ',
+           'বাণ', 'তাণ', 'কণা', 'ণত'],
+    'ন': ['নাম', 'নদী', 'নিজ', 'বন', 'মন', 'দিন', 'খান', 'মানুষ',
+           'নীল', 'নেই', 'তিন', 'নতুন'],
+    # ── শ vs ষ ────────────────────────────────────────────────────────────────
+    'শ': ['শব্দ', 'শহর', 'শেষ', 'শান্ত', 'শুরু', 'শাখা', 'শ্রম', 'শিক্ষা',
+           'শীত', 'শোনা', 'শক্তি', 'শাড়ি'],
+    'ষ': ['ষোল', 'বিষয়', 'কষ্ট', 'নষ্ট', 'ষষ্ঠ', 'বর্ষ', 'ষড়', 'বিষ',
+           'আষাঢ়', 'দোষ', 'রোষ', 'ষাট'],
+    # ── ড vs ঢ ────────────────────────────────────────────────────────────────
+    'ড': ['ডাক', 'ডান', 'ডাকা', 'ডুব', 'ডিম', 'ডাল', 'ডোল', 'ডেকে',
+           'ডাবা', 'ডুমুর', 'ডেরা', 'ডানা'],
+    'ঢ': ['ঢাকা', 'ঢেউ', 'ঢোল', 'ঢাকনা', 'ঢং', 'ঢালু', 'ঢেলে', 'ঢুকে',
+           'ঢিল', 'ঢোকা', 'ঢাল', 'ঢাকি'],
+    # ── ব vs ভ ────────────────────────────────────────────────────────────────
+    'ব': ['বাড়ি', 'বন', 'বয়স', 'বলা', 'বড়', 'বাজার', 'বারো', 'বেলা',
+           'বাঘ', 'বাঁশ', 'বিষয়', 'বোন'],
+    'ভ': ['ভাই', 'ভালো', 'ভূমি', 'ভয়', 'ভেতর', 'ভাষা', 'ভিড়', 'ভাগ',
+           'ভোর', 'ভাড়া', 'ভালুক', 'ভিটা'],
+    # ── ধ vs ঘ ────────────────────────────────────────────────────────────────
+    'ধ': ['ধান', 'ধরন', 'ধীর', 'বিধি', 'ধাক্কা', 'ধোঁয়া', 'ধুলো', 'ধারা',
+           'ধনী', 'ধারণ', 'ধরা', 'ধোয়া'],
+    'ঘ': ['ঘর', 'ঘাস', 'ঘুম', 'ঘোড়া', 'মেঘ', 'ঘণ্টা', 'ঘড়ি', 'ঘেরা',
+           'ঘাড়', 'ঘিরে', 'ঘটনা', 'ঘেঁটু'],
+    # ── ত vs থ ────────────────────────────────────────────────────────────────
+    'ত': ['তাই', 'তখন', 'তুমি', 'তালা', 'তিন', 'তারা', 'তলা', 'তবে',
+           'তেল', 'তামা', 'তোলা', 'তাকা'],
+    'থ': ['থাকা', 'থামা', 'থালা', 'পথ', 'থেকে', 'থোকা', 'থাবা', 'থোড়',
+           'থানা', 'থামো', 'থুতু', 'থলে'],
+    # ── ক vs ট ────────────────────────────────────────────────────────────────
+    'ক': ['কাজ', 'কথা', 'কিছু', 'কেন', 'কাল', 'কানে', 'কেউ', 'কোথা',
+           'কলম', 'কপাল', 'কাছে', 'কিনা'],
+    'ট': ['টাকা', 'টেবিল', 'টান', 'টুকরো', 'পাট', 'টাটকা', 'টেনে', 'টিন',
+           'টোপ', 'টানা', 'টাইম', 'টিকিট'],
+    # ── দ vs ব ────────────────────────────────────────────────────────────────
+    'দ': ['দিন', 'দেশ', 'দেখা', 'দুই', 'দাম', 'দল', 'দরজা', 'দূরে',
+           'দাড়ি', 'দেরি', 'দানা', 'দোকান'],
+    # ── র vs ব (low-res confusion) ────────────────────────────────────────────
+    'র': ['রক্ত', 'রান্না', 'রাত', 'রঙ', 'রাস্তা', 'রোদ', 'রাখা', 'রোগ',
+           'রাজা', 'রূপ', 'রিকশা', 'রসুন'],
+    # ── গ vs ও ────────────────────────────────────────────────────────────────
+    'গ': ['গাছ', 'গাড়ি', 'গল্প', 'গান', 'গরম', 'গভীর', 'গেল', 'গোলাপ',
+           'গোড়া', 'গাল', 'গ্রাম', 'গণনা'],
+    'ও': ['ওষুধ', 'ওজন', 'ওপর', 'ওঠা', 'ওই', 'ওরা', 'ওখানে', 'ওদের'],
+    # ── Diacritics: ি vs ী ────────────────────────────────────────────────────
+    'ি': ['কিছু', 'নিজ', 'বিশ্ব', 'দিন', 'রিকশা', 'চিঠি', 'ভিড়', 'নিম',
+           'বিষয়', 'তিন', 'গির', 'পিতা'],
+    'ী': ['নীল', 'জীবন', 'শীত', 'তীর', 'খীর', 'বীর', 'ধীর', 'নারী',
+           'বাড়ী', 'পাখী', 'রানী', 'দাদী'],
+    # ── Diacritics: ু vs ূ ────────────────────────────────────────────────────
+    'ু': ['কুল', 'তুমি', 'দুই', 'মুখ', 'গুণ', 'ফুল', 'খুশি', 'সুর',
+           'ভুল', 'কুকুর', 'তুলা', 'মুরগি'],
+    'ূ': ['ভূমি', 'মূল', 'পূর্ব', 'শূন্য', 'সূর্য', 'তূণ', 'ভূল', 'মূলা',
+           'কূল', 'ঝূলা', 'বূলি', 'পূর্ণ'],
+    # ── Marks: ং vs ঃ vs ঁ ───────────────────────────────────────────────────
+    'ং': ['বাংলা', 'রং', 'সংখ্যা', 'অংশ', 'ঢং', 'সংকট', 'রংপুর', 'ঢাকাং',
+           'বাংলাদেশ', 'সংসার', 'সংঘ', 'মংলা'],
+    'ঃ': ['দুঃখ', 'নিঃশ্বাস', 'অতঃপর', 'পুনঃ', 'প্রাতঃ', 'মূলতঃ',
+           'বস্তুতঃ', 'সংক্ষেপতঃ'],
+    'ঁ': ['চাঁদ', 'বাঁশ', 'হাঁটা', 'পাঁচ', 'মাঁ', 'সাঁতার', 'গাঁও', 'কাঁচ',
+           'বাঁকা', 'ঘাঁটি', 'ধাঁধা', 'পাঁজর'],
+    # ── ছ vs ঢ ────────────────────────────────────────────────────────────────
+    'ছ': ['ছাত্র', 'ছবি', 'ছোট', 'ছেলে', 'ছাদ', 'ছায়া', 'ছুটি', 'ছুরি',
+           'ছাপ', 'ছেড়া', 'ছিল', 'ছাগল'],
+    # ── ফ vs ব ────────────────────────────────────────────────────────────────
+    'ফ': ['ফুল', 'ফল', 'ফাঁকি', 'ফিরে', 'ফেরা', 'ফাঁদ', 'ফোন', 'ফজর',
+           'ফ্লাট', 'ফাঁস', 'ফোঁটা', 'ফালা'],
+    # ── ম vs ন (at small sizes) ───────────────────────────────────────────────
+    'ম': ['মাঠ', 'মানুষ', 'মেঘ', 'মাছ', 'মন', 'মাস', 'মুখ', 'মাটি',
+           'মেলা', 'মারা', 'মিষ্টি', 'মোড়'],
+    # ── হ vs ব ────────────────────────────────────────────────────────────────
+    'হ': ['হাত', 'হেঁটে', 'হওয়া', 'হলুদ', 'হিসাব', 'হাঁটা', 'হিম', 'হেলান',
+           'হোক', 'হালকা', 'হিল', 'হামলা'],
+    # ── ৎ vs ত (single-char isolation) ──────────────────────────────────────
+    'ৎ': ['হঠাৎ', 'তৎপর', 'বাৎসরিক', 'তৎকাল', 'অকস্মাৎ', 'তৎক্ষণাৎ',
+           'সাৎ', 'মাৎস্য', 'নিমেষাৎ', 'সহসাৎ', 'তৎসম', 'তৎপরতা'],
+}
+
+
+def _generate_confusion_data(confusion_count, output_dir, image_dir, reset):
+    """Generate images targeting visually similar Bangla character pairs."""
+    print(f"\n── Confusion-pair training ({confusion_count}/char × "
+          f"{len(_BN_CONFUSION_CHARS)} chars) ────────────")
+
+    fonts = load_fonts('bn')
+    plan_path = os.path.join(output_dir, '.plan_confusion.json')
+
+    if not reset and os.path.exists(plan_path):
+        print(f"  Resuming from {plan_path}")
+        plan = _load_json(plan_path)
+    else:
+        plan = []
+        idx = 0
+        for char, words in _BN_CONFUSION_CHARS.items():
+            for _ in range(confusion_count):
+                word = random.choice(words)
+                # Vary font size: small (12-20), medium (22-36), large (38-54)
+                size_band = random.choices(['s', 'm', 'l'], weights=[3, 5, 2])[0]
+                if size_band == 's':
+                    fs = random.randint(12, 20)
+                elif size_band == 'm':
+                    fs = random.randint(22, 36)
+                else:
+                    fs = random.randint(38, 54)
+                plan.append({
+                    'idx': idx,
+                    'text': word,
+                    'char': char,
+                    'font_size': fs,
+                    'image_path': os.path.join(
+                        output_dir, 'images', f'bn_conf_{idx}.png'),
+                    'label_path': os.path.join(
+                        output_dir, 'labels', f'bn_conf_{idx}.txt'),
+                })
+                idx += 1
+        _save_json(plan, plan_path)
+
+    todo = [p for p in plan if not os.path.exists(p['image_path'])]
+    print(f"  {len(plan) - len(todo)} done, {len(todo)} remaining")
+
+    for item in tqdm(todo, desc='Confusion training'):
+        font = random.choice(fonts)
+        img = None
+        attempts = 0
+        while img is None and attempts < 5:
+            img = FakeTextDataGenerator.generate(
+                index=item['idx'],
+                text=item['text'],
+                font=font,
+                out_dir=None,
+                size=item['font_size'],
+                extension=None,
+                skewing_angle=0,
+                random_skew=False,
+                blur=random.randint(0, 1),
+                random_blur=True,
+                background_type=3,
+                distorsion_type=0,
+                distorsion_orientation=0,
+                is_handwritten=False,
+                width=-1,
+                alignment=1,
+                text_color='#000000',
+                orientation=0,
+                space_width=1.0,
+                character_spacing=0,
+                margins=(5, 5, 5, 5),
+                fit=True,
+                output_mask=False,
+                word_split=False,
+                image_dir=image_dir,
+                stroke_width=0,
+                stroke_fill='#282828',
+                image_mode='RGB',
+            )
+            attempts += 1
+
+        if img is None:
+            continue
+
+        img = _rotate_image(img)
+        img = _apply_augraphy(img)
+        os.makedirs(os.path.dirname(item['image_path']), exist_ok=True)
+        os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
+        img.save(item['image_path'])
+        with open(item['label_path'], 'w', encoding='utf-8') as f:
+            f.write(item['text'])
+
+
 def _rotate_image(img, max_angle=3):
     angle = random.uniform(-max_angle, max_angle)
     if abs(angle) < 0.3:
@@ -597,6 +778,8 @@ def main():
     parser.add_argument('--csv_path', type=str, default='data/postal_codes.csv')
     parser.add_argument('--reset', action='store_true',
                         help='Ignore saved plans and restart from scratch')
+    parser.add_argument('--confusion_count', type=int, default=0,
+                        help='Images per confusable char (0=skip, e.g. 300)')
     parser.add_argument('--prepare_hf', action='store_true',
                         help='Run prepare_hf_dataset.py after generation')
     parser.add_argument('--shamadhan_dir', type=str, default='/app/data',
@@ -756,6 +939,15 @@ def main():
         font_size=args.font_size,
         blur=args.blur,
     )
+
+    # ── Confusion-pair training images ────────────────────────────────────────
+    if args.confusion_count > 0:
+        _generate_confusion_data(
+            confusion_count=args.confusion_count,
+            output_dir=args.output_dir,
+            image_dir=image_dir,
+            reset=args.reset,
+        )
 
     # ── Analytics ─────────────────────────────────────────────────────────────
     try:
