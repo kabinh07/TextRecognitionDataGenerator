@@ -267,10 +267,22 @@ def main():
         shamadhan = collect_shamadhan(args.shamadhan_dir)
         print(f'  shamadhan : {len(shamadhan):,}')
 
-        random.shuffle(synthetic)
-        val_n     = max(1, int(len(synthetic) * args.val_split))
-        val_samp  = synthetic[:val_n]
-        train_samp = synthetic[val_n:] + shamadhan  # real data → train only
+        # Confusion-pair images must go to train only (they're targeted hard examples,
+        # not representative of the distribution — putting them in val skews metrics).
+        confusion = [
+            s for s in synthetic
+            if Path(s['image_path']).name.startswith('bn_conf_')
+        ]
+        regular = [
+            s for s in synthetic
+            if not Path(s['image_path']).name.startswith('bn_conf_')
+        ]
+        print(f'  confusion (train-only) : {len(confusion):,}')
+
+        random.shuffle(regular)
+        val_n      = max(1, int(len(regular) * args.val_split))
+        val_samp   = regular[:val_n]
+        train_samp = regular[val_n:] + shamadhan + confusion  # real + confusion → train only
         random.shuffle(train_samp)
 
         _save_json(train_samp, samples_path(args.dataset_dir, 'train'))
@@ -293,7 +305,8 @@ def main():
         }
         save_state(state, args.dataset_dir)
         print(f'\n  train : {len(train_samp):,}  '
-              f'({len(synthetic)-val_n:,} synth + {len(shamadhan):,} shamadhan)')
+              f'({len(regular)-val_n:,} synth + {len(shamadhan):,} shamadhan '
+              f'+ {len(confusion):,} confusion)')
         print(f'  val   : {len(val_samp):,}  (synthetic only)')
     else:
         print('Phase 1 — resuming from saved sample lists.')
