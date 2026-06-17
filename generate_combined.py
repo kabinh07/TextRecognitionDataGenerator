@@ -526,6 +526,7 @@ def _generate_confusion_data(confusion_count, output_dir, image_dir, reset):
                 distorsion_type=0,
                 distorsion_orientation=0,
                 is_handwritten=False,
+                name_format=0,
                 width=-1,
                 alignment=1,
                 text_color='#000000',
