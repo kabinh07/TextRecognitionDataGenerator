@@ -783,6 +783,8 @@ def main():
                         help='Images per confusable char (0=skip, e.g. 300)')
     parser.add_argument('--prepare_hf', action='store_true',
                         help='Run prepare_hf_dataset.py after generation')
+    parser.add_argument('--reset_hf', action='store_true',
+                        help='Pass --reset to prepare_hf_dataset.py (force rebuild sample lists)')
     parser.add_argument('--shamadhan_dir', type=str, default='/app/data',
                         help='Real shamadhan image dir for prepare_hf_dataset.py')
     parser.add_argument('--hf_dir', type=str, default='/app/hf_dataset',
@@ -962,12 +964,15 @@ def main():
 
     if args.prepare_hf:
         import subprocess
-        subprocess.run([
+        cmd = [
             sys.executable, 'prepare_hf_dataset.py',
             '--output_dir', args.output_dir,
             '--shamadhan_dir', args.shamadhan_dir,
             '--dataset_dir', args.hf_dir,
-        ], check=True)
+        ]
+        if args.reset_hf:
+            cmd.append('--reset')
+        subprocess.run(cmd, check=True)
 
     img_dir = os.path.join(args.output_dir, 'images')
     total = len([f for f in os.listdir(img_dir) if f.endswith('.png')]) if os.path.isdir(img_dir) else 0

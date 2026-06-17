@@ -61,3 +61,4 @@ services:
         --hf_dir /app/hf_dataset
         --confusion_count 300
         --prepare_hf
+        --reset_hf
