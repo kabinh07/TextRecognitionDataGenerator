@@ -66,3 +66,34 @@ services:
         --reset_confusion
         --prepare_hf
         --reset_hf
+
+  build_confusion_dataset:
+    container_name: build_confusion_dataset
+    image: trdg-test:latest
+    build: .
+    volumes:
+      - /mnt/truenas/datasets/synth/confusion_work:/app/confusion_work
+      - /mnt/truenas/datasets/synth/hf_extended:/app/hf_extended
+      - ./build_confusion_dataset.py:/app/build_confusion_dataset.py
+      - ./generate_combined.py:/app/generate_combined.py
+      - ./address_generator.py:/app/address_generator.py
+      - ./trdg/fonts:/app/trdg/fonts
+    mem_limit: 16g
+    cpus: 2
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    # Set HF_TOKEN in your shell before running:
+    #   export HF_TOKEN=hf_xxx
+    #   docker compose run --rm build_confusion_dataset
+    #
+    # To push result:  add --push_to_hub kavinh07/ocr_dataset_shamadhan_synth_30k_p3
+    # To regenerate:   add --reset
+    command: >
+      python3 build_confusion_dataset.py
+        --source_dataset kavinh07/ocr_dataset_shamadhan_synth_30k_p2
+        --confusion_count 300
+        --font_size 11
+        --blur 0.3
+        --work_dir /app/confusion_work
+        --output_dir /app/hf_extended
+        --shard_size 500
