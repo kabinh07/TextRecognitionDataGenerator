@@ -37,6 +37,7 @@ from generate_combined import (
     _BN_CONFUSION_CHARS,
     _apply_augraphy,
     _load_json,
+    _maybe_downscale,
     _rotate_image,
     _save_json,
 )
@@ -138,6 +139,7 @@ def generate_confusion_images(work_dir, confusion_count, font_size, blur, reset,
 
         img = _rotate_image(img)
         img = _apply_augraphy(img)
+        img = _maybe_downscale(img)
         img.save(item['image_path'])
         with open(item['label_path'], 'w', encoding='utf-8') as f:
             f.write(item['text'])

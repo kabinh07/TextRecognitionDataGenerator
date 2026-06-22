@@ -375,7 +375,6 @@ def _inject_char_coverage(bn_class_dict, min_reps=30):
 
 # ── Text style: color + stroke (bold effect) ─────────────────────────────────
 
-_RED_CLASSES  = {'nid_number', 'date_of_birth'}
 _DATE_CLASSES = {'date_of_birth'}
 
 
@@ -385,7 +384,12 @@ def _text_style(class_name):
     Bold via stroke_width=1 on all non-date classes.
     Red for nid_number and date_of_birth.
     """
-    color  = '#CC0000' if class_name in _RED_CLASSES  else '#000000'
+    if class_name == 'nid_number':
+        color = '#CC0000' if random.random() < 0.5 else '#000000'
+    elif class_name == 'date_of_birth':
+        color = '#CC0000'
+    else:
+        color = '#000000'
     stroke = 0          if class_name in _DATE_CLASSES else 1
     return color, stroke, color
 
@@ -557,11 +561,21 @@ def _generate_confusion_data(confusion_count, output_dir, image_dir, reset,
 
         img = _rotate_image(img)
         img = _apply_augraphy(img)
+        img = _maybe_downscale(img)
         os.makedirs(os.path.dirname(item['image_path']), exist_ok=True)
         os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
         img.save(item['image_path'])
         with open(item['label_path'], 'w', encoding='utf-8') as f:
             f.write(item['text'])
+
+
+def _maybe_downscale(img, prob=0.35):
+    """Permanently reduce image resolution by 20-30% for a random subset."""
+    if random.random() > prob:
+        return img
+    scale = random.uniform(0.7, 0.8)
+    w, h = img.size
+    return img.resize((max(1, int(w * scale)), max(1, int(h * scale))), PILImage.BILINEAR)
 
 
 def _rotate_image(img, max_angle=3):
@@ -580,28 +594,40 @@ def _rotate_image(img, max_angle=3):
     return img_rotated.crop((pad, pad, pad + w, pad + h))
 
 
-def _apply_augraphy(img, moire_prob=0.8, fade_prob=0.8):
-    """Apply random moiré pattern and/or lighting-fade using augraphy. No-op if not installed."""
+def _apply_augraphy(img, moire_prob=0.8, fade_prob=0.8, lowres_prob=0.1,
+                    badcopy_prob=0.5, fold_prob=0.4, lowink_prob=0.3, fax_prob=0.4):
+    """Apply random augmentations. Low-res simulation + augraphy effects."""
+    # Low-res simulation: mild downsample then upsample — text stays readable
+    if random.random() < lowres_prob:
+        orig_size = img.size
+        scale = random.uniform(0.6, 0.8)
+        small = (max(1, int(orig_size[0] * scale)), max(1, int(orig_size[1] * scale)))
+        img = img.resize(small, PILImage.NEAREST).resize(orig_size, PILImage.NEAREST)
+
     try:
-        from augraphy import MoirePattern, LightingGradient
+        from augraphy import (BadPhotoCopy, Faxify, Folding, LightingGradient,
+                              LowInkRandomLines, MoirePattern)
     except ImportError:
         return img
 
     arr = np.array(img.convert('RGB'))
-    changed = False
 
-    if random.random() < moire_prob:
-        result = MoirePattern()(arr)
-        arr = result if isinstance(result, np.ndarray) else result.get('output', arr)
-        changed = True
-
-    if random.random() < fade_prob:
-        result = LightingGradient()(arr)
-        arr = result if isinstance(result, np.ndarray) else result.get('output', arr)
-        changed = True
-
-    if not changed:
-        return img
+    for aug_cls, prob in [
+        (MoirePattern,      moire_prob),
+        (LightingGradient,  fade_prob),
+        (BadPhotoCopy,      badcopy_prob),
+        (Folding,           fold_prob),
+        (lambda: LowInkRandomLines(count_range=(15, 35), noise_probability=0.4), 0.8),
+        (Faxify,            fax_prob),
+    ]:
+        if random.random() < prob:
+            try:
+                result = aug_cls()(arr)
+                out = result if isinstance(result, np.ndarray) else result.get('output', arr)
+                if isinstance(out, np.ndarray) and out.shape[:2] == arr.shape[:2]:
+                    arr = out
+            except Exception:
+                pass
 
     return PILImage.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
 
@@ -692,6 +718,7 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
             continue
         img = _rotate_image(img)
         img = _apply_augraphy(img)
+        img = _maybe_downscale(img)
         os.makedirs(os.path.dirname(item['image_path']), exist_ok=True)
         os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
         img.save(item['image_path'])
@@ -785,6 +812,7 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
 
         img = _rotate_image(img)
         img = _apply_augraphy(img)
+        img = _maybe_downscale(img)
         os.makedirs(os.path.dirname(item['image_path']), exist_ok=True)
         os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
         img.save(item['image_path'])
