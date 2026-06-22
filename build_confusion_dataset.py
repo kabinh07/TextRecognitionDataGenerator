@@ -25,6 +25,7 @@ import math
 import os
 import random
 import sys
+from pathlib import Path
 
 import numpy as np
 from PIL import Image as PILImage
@@ -39,6 +40,7 @@ from generate_combined import (
     _rotate_image,
     _save_json,
 )
+from prepare_hf_dataset import collect_shamadhan, collect_synthetic
 from trdg.data_generator import FakeTextDataGenerator
 from trdg.utils import load_fonts
 
@@ -58,7 +60,7 @@ def _hf_features():
 
 # ── Confusion image generation ───────────────────────────────────────────────
 
-def generate_confusion_images(work_dir, confusion_count, font_size, blur, reset):
+def generate_confusion_images(work_dir, confusion_count, font_size, blur, reset, stroke_width=1):
     """Generate confusion-pair images to work_dir/images/ + work_dir/labels/."""
     print(f"\n── Generating confusion images ({confusion_count}/char × "
           f"{len(_BN_CONFUSION_CHARS)} chars) ──")
@@ -125,8 +127,8 @@ def generate_confusion_images(work_dir, confusion_count, font_size, blur, reset)
                 output_mask=False,
                 word_split=True,
                 image_dir=image_dir,
-                stroke_width=0,
-                stroke_fill='#282828',
+                stroke_width=stroke_width,
+                stroke_fill='#000000',
                 image_mode='RGB',
             )
             attempts += 1
@@ -141,6 +143,28 @@ def generate_confusion_images(work_dir, confusion_count, font_size, blur, reset)
             f.write(item['text'])
 
     return plan
+
+
+# ── Build HF Dataset from sample metadata list ───────────────────────────────
+
+def dataset_from_samples(samples, features):
+    """Build HF Dataset loading images from disk paths."""
+    from datasets import Dataset
+
+    def gen():
+        for s in samples:
+            try:
+                img = PILImage.open(s['image_path']).convert('RGB')
+                yield {
+                    'image':      img,
+                    'text':       s['text'],
+                    'class_name': s['class_name'],
+                    'source':     s['source'],
+                }
+            except Exception as e:
+                print(f"  skip {s['image_path']}: {e}")
+
+    return Dataset.from_generator(gen, features=features)
 
 
 # ── Build HF Dataset from confusion images ───────────────────────────────────
@@ -251,11 +275,19 @@ def main():
                         help='Images per confusable char pair')
     parser.add_argument('--font_size',       type=int,   default=11)
     parser.add_argument('--blur',            type=float, default=0.3)
+    parser.add_argument('--stroke_width',    type=int,   default=1,
+                        help='Stroke width for bold effect (0=off, 1=bold)')
     parser.add_argument('--work_dir',        default='/app/confusion_work',
                         help='Directory for generated confusion images')
     parser.add_argument('--output_dir',      default='/app/hf_extended',
                         help='Output directory for final Parquet dataset')
     parser.add_argument('--shard_size',      type=int,   default=500)
+    parser.add_argument('--synth_output_dir', default=None,
+                        help='Local generate_combined output dir to merge into dataset')
+    parser.add_argument('--shamadhan_dir',    default=None,
+                        help='Shamadhan dataset root (dataset.csv + cropped_images/) to merge')
+    parser.add_argument('--val_split',        type=float, default=0.1,
+                        help='Fraction of local synth data held out for val (default 0.1)')
     parser.add_argument('--push_to_hub',     default=None,
                         help='HuggingFace repo id to push to (e.g. your-org/dataset-name)')
     parser.add_argument('--hf_token',        default=None,
@@ -283,6 +315,7 @@ def main():
         font_size=args.font_size,
         blur=args.blur,
         reset=args.reset,
+        stroke_width=args.stroke_width,
     )
     completed_plan = [p for p in plan if os.path.exists(p['image_path'])]
     print(f"  {len(completed_plan):,} confusion images ready")
@@ -291,21 +324,61 @@ def main():
     confusion_ds = build_confusion_dataset(completed_plan)
     print(f"  confusion dataset: {len(confusion_ds):,} samples")
 
+    # ── Step 3b: Collect local synthetic data (optional) ─────────────────────
+    features = _hf_features()
+
+    local_train_ds = None
+    local_val_ds   = None
+    shamadhan_local_ds = None
+
+    if args.synth_output_dir:
+        synth_samples = collect_synthetic(args.synth_output_dir)
+        print(f"\nLocal synthetic: {len(synth_samples):,} from {args.synth_output_dir}")
+        conf_local = [s for s in synth_samples
+                      if Path(s['image_path']).name.startswith('bn_conf_')]
+        regular    = [s for s in synth_samples
+                      if not Path(s['image_path']).name.startswith('bn_conf_')]
+        random.shuffle(regular)
+        val_n = max(1, int(len(regular) * args.val_split))
+        local_val_samples   = regular[:val_n]
+        local_train_samples = regular[val_n:] + conf_local
+        print(f"  train: {len(local_train_samples):,}  val: {len(local_val_samples):,}")
+        local_train_ds = dataset_from_samples(local_train_samples, features)
+        local_val_ds   = dataset_from_samples(local_val_samples,   features)
+
+    if args.shamadhan_dir:
+        shama_samples = collect_shamadhan(args.shamadhan_dir)
+        print(f"\nShamadhan: {len(shama_samples):,} real samples")
+        shamadhan_local_ds = dataset_from_samples(shama_samples, features)
+
     # ── Step 4: Merge — confusion goes to train only ─────────────────────────
     print("\nMerging datasets...")
-    features = _hf_features()
 
     # Cast to ensure consistent features before concat
     source_train = source['train'].cast(features)
     source_val   = source['validation'].cast(features)
     confusion_ds = confusion_ds.cast(features)
 
-    train_combined = concatenate_datasets([source_train, confusion_ds])
-    train_combined = train_combined.shuffle(seed=42)
+    train_parts = [source_train, confusion_ds]
+    val_parts   = [source_val]
+    if local_train_ds is not None:
+        train_parts.append(local_train_ds.cast(features))
+    if local_val_ds is not None:
+        val_parts.append(local_val_ds.cast(features))
+    if shamadhan_local_ds is not None:
+        train_parts.append(shamadhan_local_ds.cast(features))
 
+    train_combined = concatenate_datasets(train_parts).shuffle(seed=42)
+    val_combined   = concatenate_datasets(val_parts).shuffle(seed=42) if len(val_parts) > 1 else source_val
+
+    local_synth_n  = len(local_train_ds) if local_train_ds else 0
+    shamadhan_n    = len(shamadhan_local_ds) if shamadhan_local_ds else 0
     print(f"  final train : {len(train_combined):,}  "
-          f"({len(source_train):,} original + {len(confusion_ds):,} confusion)")
-    print(f"  final val   : {len(source_val):,}  (unchanged)")
+          f"({len(source_train):,} p2 + {len(confusion_ds):,} confusion"
+          + (f" + {local_synth_n:,} local_synth" if local_synth_n else "")
+          + (f" + {shamadhan_n:,} shamadhan" if shamadhan_n else "")
+          + ")")
+    print(f"  final val   : {len(val_combined):,}")
 
     # ── Step 5: Write sharded Parquet ────────────────────────────────────────
     write_sharded_parquet(
@@ -315,7 +388,7 @@ def main():
         'train',
     )
     write_sharded_parquet(
-        source_val,
+        val_combined,
         os.path.join(args.output_dir, 'validation'),
         args.shard_size,
         'validation',
@@ -324,7 +397,7 @@ def main():
         args.output_dir,
         args.source_dataset,
         len(train_combined),
-        len(source_val),
+        len(val_combined),
         len(confusion_ds),
     )
 

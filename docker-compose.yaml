@@ -67,6 +67,37 @@ services:
         --prepare_hf
         --reset_hf
 
+  full_pipeline:
+    container_name: full_pipeline
+    image: trdg-test:latest
+    build: .
+    volumes:
+      # Shamadhan real data (dataset.csv + cropped_images/ + NID JSON corpora)
+      - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/data
+      - ./data/postal_codes.csv:/app/postal_codes.csv
+      # Freshly generated synthetic images land here
+      - ./output:/app/output
+      # - /mnt/truenas/datasets/synth/full_pipeline_output:/app/output
+      # Confusion images (resumable across runs)
+      - /mnt/truenas/datasets/synth/confusion_work:/app/confusion_work
+      # Final extended HF Parquet dataset
+      - /mnt/truenas/datasets/synth/hf_extended:/app/hf_extended
+      # Hot-mount source files
+      - ./generate_combined.py:/app/generate_combined.py
+      - ./address_generator.py:/app/address_generator.py
+      - ./build_confusion_dataset.py:/app/build_confusion_dataset.py
+      - ./prepare_hf_dataset.py:/app/prepare_hf_dataset.py
+      - ./run_pipeline.sh:/app/run_pipeline.sh
+      - ./trdg/fonts:/app/trdg/fonts
+    mem_limit: 10g
+    cpus: 4
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    # Produces: p2 base + fresh local synth + shamadhan real + confusion → /app/hf_extended/
+    # To push result, add to run_pipeline.sh or run:
+    #   docker compose run --rm full_pipeline python3 build_confusion_dataset.py ... --push_to_hub org/name
+    command: bash /app/run_pipeline.sh
+
   build_confusion_dataset:
     container_name: build_confusion_dataset
     image: trdg-test:latest

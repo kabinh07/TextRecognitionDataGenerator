@@ -25,7 +25,6 @@ import numpy as np
 from PIL import Image as PILImage
 from tqdm import tqdm
 
-from trdg.generators import GeneratorFromStrings
 from trdg.data_generator import FakeTextDataGenerator
 from trdg.utils import load_fonts
 
@@ -374,6 +373,23 @@ def _inject_char_coverage(bn_class_dict, min_reps=30):
           f"({len(_BN_COVERAGE_WORDS)} unique × {min_reps} reps)")
 
 
+# ── Text style: color + stroke (bold effect) ─────────────────────────────────
+
+_RED_CLASSES  = {'nid_number', 'date_of_birth'}
+_DATE_CLASSES = {'date_of_birth'}
+
+
+def _text_style(class_name):
+    """Return (text_color, stroke_width, stroke_fill) for a class.
+
+    Bold via stroke_width=1 on all non-date classes.
+    Red for nid_number and date_of_birth.
+    """
+    color  = '#CC0000' if class_name in _RED_CLASSES  else '#000000'
+    stroke = 0          if class_name in _DATE_CLASSES else 1
+    return color, stroke, color
+
+
 # ── Confusion-pair training data ─────────────────────────────────────────────
 # Short Bangla words that isolate visually similar characters so the model
 # learns to distinguish them. Each key is the target character; value is a
@@ -466,7 +482,7 @@ _BN_CONFUSION_CHARS = {
 
 
 def _generate_confusion_data(confusion_count, output_dir, image_dir, reset,
-                             font_size=11, blur=0.3):
+                             font_size=11, blur=0.3, stroke_width=1):
     """Generate images targeting visually similar Bangla character pairs."""
     print(f"\n── Confusion-pair training ({confusion_count}/char × "
           f"{len(_BN_CONFUSION_CHARS)} chars) ────────────")
@@ -530,8 +546,8 @@ def _generate_confusion_data(confusion_count, output_dir, image_dir, reset,
                 output_mask=False,
                 word_split=True,
                 image_dir=image_dir,
-                stroke_width=0,
-                stroke_fill='#282828',
+                stroke_width=stroke_width,
+                stroke_fill='#000000',
                 image_mode='RGB',
             )
             attempts += 1
@@ -593,7 +609,7 @@ def _apply_augraphy(img, moire_prob=0.8, fade_prob=0.8):
 # ── Shamadhan generation ──────────────────────────────────────────────────────
 
 def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
-                        output_dir, image_dir, reset):
+                        output_dir, image_dir, reset, stroke_width=1):
     print(f"\n── Shamadhan {lang.upper()} ({text_count} images) ─────────────────")
     fonts = load_fonts(lang)
     plan_path = os.path.join(output_dir, f'.plan_{lang}.json')
@@ -632,26 +648,46 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
     if not todo:
         return
 
-    generator = GeneratorFromStrings(
-        strings=[p['text'] for p in todo],
-        count=len(todo),
-        fonts=fonts,
-        size=font_size,
-        language=lang,
-        skewing_angle=0,
-        random_skew=False,
-        distorsion_type=0,
-        blur=blur,
-        random_blur=True,
-        fit=True,
-        word_split=True,
-        background_type=3,
-        image_dir=image_dir,
-        orientation=0,
-    )
-
-    for (img, lbl), item in tqdm(zip(generator, todo), total=len(todo),
-                                  desc=f'Shamadhan {lang.upper()}'):
+    for item in tqdm(todo, desc=f'Shamadhan {lang.upper()}'):
+        font = random.choice(fonts)
+        text_color, class_stroke, stroke_fill = _text_style(item['class_name'])
+        # Respect caller's stroke_width; dates stay at 0 regardless
+        actual_stroke = stroke_width if class_stroke > 0 else 0
+        img = None
+        attempts = 0
+        while img is None and attempts < 5:
+            img = FakeTextDataGenerator.generate(
+                index=item['idx'],
+                text=item['text'],
+                font=font,
+                out_dir=None,
+                size=font_size,
+                extension=None,
+                skewing_angle=0,
+                random_skew=False,
+                blur=blur,
+                random_blur=True,
+                background_type=3,
+                distorsion_type=0,
+                distorsion_orientation=0,
+                is_handwritten=False,
+                name_format=0,
+                width=-1,
+                alignment=1,
+                text_color=text_color,
+                orientation=0,
+                space_width=1.0,
+                character_spacing=0,
+                margins=(5, 5, 5, 5),
+                fit=True,
+                output_mask=False,
+                word_split=True,
+                image_dir=image_dir,
+                stroke_width=actual_stroke,
+                stroke_fill=stroke_fill,
+                image_mode='RGB',
+            )
+            attempts += 1
         if img is None:
             continue
         img = _rotate_image(img)
@@ -660,13 +696,13 @@ def _generate_shamadhan(lang, class_dict, text_count, font_size, blur,
         os.makedirs(os.path.dirname(item['label_path']), exist_ok=True)
         img.save(item['image_path'])
         with open(item['label_path'], 'w', encoding='utf-8') as f:
-            f.write(lbl)
+            f.write(item['text'])
 
 
 # ── Address generation ────────────────────────────────────────────────────────
 
 def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
-                        extra_texts=None, font_size=None, blur=None):
+                        extra_texts=None, font_size=None, blur=None, stroke_width=1):
     print(f"\n── Bangla Addresses ({address_count} images) ──────────────────────")
     addr_gen = AddressGenerator(csv_path)
     print(f"  Village pool: {len(addr_gen._bn_villages):,}")
@@ -725,7 +761,7 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
                 name_format=0,
                 width=-1,
                 alignment=0,
-                text_color='#282828',
+                text_color='#000000',
                 orientation=0,
                 space_width=1.0,
                 character_spacing=0,
@@ -734,6 +770,9 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
                 output_mask=False,
                 word_split=True,
                 image_dir=image_dir,
+                stroke_width=stroke_width,
+                stroke_fill='#000000',
+                image_mode='RGB',
             )
             if img is None:
                 item_font_size = max(item_font_size + 4, 32)
@@ -767,6 +806,8 @@ def main():
                         help='Font size for shamadhan images')
     parser.add_argument('--blur', type=float, default=0.8,
                         help='Max blur radius for shamadhan images (random 0..blur)')
+    parser.add_argument('--stroke_width', type=int, default=1,
+                        help='Stroke width for bold effect (0=off, 1=bold, 2=heavier; dates always 0)')
     parser.add_argument('--output_dir', type=str, default='output')
     parser.add_argument('--csv_path', type=str, default='data/postal_codes.csv')
     parser.add_argument('--reset', action='store_true',
@@ -923,6 +964,7 @@ def main():
                 output_dir=args.output_dir,
                 image_dir=image_dir,
                 reset=args.reset,
+                stroke_width=args.stroke_width,
             )
 
     # ── Generate address images ────────────────────────────────────────────────
@@ -935,6 +977,7 @@ def main():
         extra_texts=shamadhan_addr_texts if loaded_csv else None,
         font_size=args.font_size,
         blur=args.blur,
+        stroke_width=args.stroke_width,
     )
 
     # ── Confusion-pair training images ────────────────────────────────────────
@@ -946,6 +989,7 @@ def main():
             reset=args.reset or args.reset_confusion,
             font_size=args.font_size,
             blur=args.blur,
+            stroke_width=args.stroke_width,
         )
 
     # ── Analytics ─────────────────────────────────────────────────────────────
