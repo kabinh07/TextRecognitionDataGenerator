@@ -76,8 +76,8 @@ services:
       - /mnt/truenas/datasets/ocr_dataset_shamadhan:/app/data
       - ./data/postal_codes.csv:/app/postal_codes.csv
       # Freshly generated synthetic images land here
-      - ./output:/app/output
-      # - /mnt/truenas/datasets/synth/full_pipeline_output:/app/output
+      # - ./output:/app/output
+      - /mnt/truenas/datasets/synth/full_pipeline_output:/app/output
       # Confusion images (resumable across runs)
       - /mnt/truenas/datasets/synth/confusion_work:/app/confusion_work
       # Final extended HF Parquet dataset
@@ -87,6 +87,7 @@ services:
       - ./address_generator.py:/app/address_generator.py
       - ./build_confusion_dataset.py:/app/build_confusion_dataset.py
       - ./prepare_hf_dataset.py:/app/prepare_hf_dataset.py
+      - ./generate_hard_negatives.py:/app/generate_hard_negatives.py
       - ./run_pipeline.sh:/app/run_pipeline.sh
       - ./trdg/fonts:/app/trdg/fonts
     mem_limit: 10g

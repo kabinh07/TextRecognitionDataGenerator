@@ -381,8 +381,8 @@ _DATE_CLASSES = {'date_of_birth'}
 def _text_style(class_name):
     """Return (text_color, stroke_width, stroke_fill) for a class.
 
-    Bold via stroke_width=1 on all non-date classes.
-    Red for nid_number and date_of_birth.
+    Bold (stroke=1) randomly ~50% of the time; dates always plain.
+    Red for nid_number (50/50) and date_of_birth.
     """
     if class_name == 'nid_number':
         color = '#CC0000' if random.random() < 0.5 else '#000000'
@@ -390,7 +390,10 @@ def _text_style(class_name):
         color = '#CC0000'
     else:
         color = '#000000'
-    stroke = 0          if class_name in _DATE_CLASSES else 1
+    if class_name in _DATE_CLASSES:
+        stroke = 0
+    else:
+        stroke = 1 if random.random() < 0.5 else 0
     return color, stroke, color
 
 
@@ -569,12 +572,12 @@ def _generate_confusion_data(confusion_count, output_dir, image_dir, reset,
             f.write(item['text'])
 
 
-def _maybe_downscale(img, prob=0.35):
-    """Permanently reduce image resolution by 20-30% for a random subset."""
-    if random.random() > prob:
-        return img
-    scale = random.uniform(0.7, 0.8)
+def _maybe_downscale(img, prob=1.0):
+    """Resize all images slightly smaller (5-15%) plus an extra 20-30% drop for 35% of them."""
     w, h = img.size
+    scale = random.uniform(0.85, 0.95)
+    if random.random() < 0.35:
+        scale *= random.uniform(0.7, 0.8)
     return img.resize((max(1, int(w * scale)), max(1, int(h * scale))), PILImage.BILINEAR)
 
 
@@ -612,22 +615,40 @@ def _apply_augraphy(img, moire_prob=0.8, fade_prob=0.8, lowres_prob=0.1,
 
     arr = np.array(img.convert('RGB'))
 
-    for aug_cls, prob in [
-        (MoirePattern,      moire_prob),
-        (LightingGradient,  fade_prob),
-        (BadPhotoCopy,      badcopy_prob),
-        (Folding,           fold_prob),
-        (lambda: LowInkRandomLines(count_range=(15, 35), noise_probability=0.4), 0.8),
-        (Faxify,            fax_prob),
-    ]:
+    try:
+        low_ink_inst = LowInkRandomLines(count_range=(15, 35), noise_probability=0.4)
+    except Exception:
+        try:
+            low_ink_inst = LowInkRandomLines()
+        except Exception:
+            low_ink_inst = None
+
+    aug_list = [
+        (MoirePattern,     moire_prob),
+        (LightingGradient, fade_prob),
+        (BadPhotoCopy,     badcopy_prob),
+        (Folding,          fold_prob),
+        (Faxify,           fax_prob),
+    ]
+    if low_ink_inst is not None:
+        aug_list.insert(4, (lambda inst=low_ink_inst: inst, 0.8))
+
+    for aug_cls, prob in aug_list:
         if random.random() < prob:
             try:
                 result = aug_cls()(arr)
-                out = result if isinstance(result, np.ndarray) else result.get('output', arr)
+                if isinstance(result, np.ndarray):
+                    out = result
+                elif isinstance(result, (tuple, list)) and len(result) > 0 and isinstance(result[0], np.ndarray):
+                    out = result[0]
+                elif isinstance(result, dict):
+                    out = result.get('output', arr)
+                else:
+                    out = arr
                 if isinstance(out, np.ndarray) and out.shape[:2] == arr.shape[:2]:
                     arr = out
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"  augraphy warn: {e}")
 
     return PILImage.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
 
@@ -766,6 +787,7 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
         item_font_size = font_size if font_size is not None else profile_size
         blur_max = blur if blur is not None else profile_blur
         font = random.choice(fonts)
+        item_stroke = stroke_width if (stroke_width > 0 and random.random() < 0.5) else 0
         img = None
         attempts = 0
 
@@ -797,7 +819,7 @@ def _generate_addresses(address_count, csv_path, output_dir, image_dir, reset,
                 output_mask=False,
                 word_split=True,
                 image_dir=image_dir,
-                stroke_width=stroke_width,
+                stroke_width=item_stroke,
                 stroke_fill='#000000',
                 image_mode='RGB',
             )
