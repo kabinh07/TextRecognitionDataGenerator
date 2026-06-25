@@ -77,11 +77,11 @@ services:
       - ./data/postal_codes.csv:/app/postal_codes.csv
       # Freshly generated synthetic images land here
       # - ./output:/app/output
-      - /mnt/truenas/datasets/synth/full_pipeline_output:/app/output
+      - /mnt/truenas/datasets/synth_2/full_pipeline_output:/app/output
       # Confusion images (resumable across runs)
-      - /mnt/truenas/datasets/synth/confusion_work:/app/confusion_work
+      - /mnt/truenas/datasets/synth_2/confusion_work:/app/confusion_work
       # Final extended HF Parquet dataset
-      - /mnt/truenas/datasets/synth/hf_extended:/app/hf_extended
+      - /mnt/truenas/datasets/synth_2/hf_extended:/app/hf_extended
       # Hot-mount source files
       - ./generate_combined.py:/app/generate_combined.py
       - ./address_generator.py:/app/address_generator.py
@@ -91,7 +91,7 @@ services:
       - ./run_pipeline.sh:/app/run_pipeline.sh
       - ./trdg/fonts:/app/trdg/fonts
     mem_limit: 10g
-    cpus: 4
+    cpus: 8
     environment:
       - HF_TOKEN=${HF_TOKEN}
     # Produces: p2 base + fresh local synth + shamadhan real + confusion → /app/hf_extended/
