@@ -99,6 +99,30 @@ services:
     #   docker compose run --rm full_pipeline python3 build_confusion_dataset.py ... --push_to_hub org/name
     command: bash /app/run_pipeline.sh
 
+  conjunct_generator:
+    container_name: conjunct_generator
+    image: trdg-test:latest
+    build: .
+    volumes:
+      - /mnt/truenas/datasets/synth_2/conjunct_output:/app/conjunct_output
+      - ./generate_conjunct_dataset.py:/app/generate_conjunct_dataset.py
+      - ./generate_combined.py:/app/generate_combined.py
+      - ./address_generator.py:/app/address_generator.py
+      - ./trdg/fonts:/app/trdg/fonts
+    mem_limit: 8g
+    cpus: 4
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    # Run: docker compose run --rm conjunct_generator
+    # To push: add --push_to_hub kavinh07/bn-conjunct-ocr
+    command: >
+      python3 generate_conjunct_dataset.py
+        --output_dir /app/conjunct_output
+        --total 5000
+        --font_size 32
+        --blur 0.3
+        --shard_size 500
+
   build_confusion_dataset:
     container_name: build_confusion_dataset
     image: trdg-test:latest
