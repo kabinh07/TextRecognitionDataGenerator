@@ -123,6 +123,31 @@ services:
         --blur 0.3
         --shard_size 500
 
+  en_lowinktrain:
+    container_name: en_lowinktrain
+    image: trdg-test:latest
+    build: .
+    volumes:
+      - /mnt/truenas/datasets/synth_2/en_lowinktrain_output:/app/en_lowinktrain_output
+      # - ./output:/app/en_lowinktrain_output
+      - ./generate_english_lowinktrain.py:/app/generate_english_lowinktrain.py
+      - ./generate_combined.py:/app/generate_combined.py
+      - ./trdg/fonts:/app/trdg/fonts
+    mem_limit: 6g
+    cpus: 4
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    # Run:        docker compose run --rm en_lowinktrain
+    # Reset:      add --reset to command
+    # Push to HF: add --push_to_hub kavinh07/en-lowinktrain-ocr to command
+    command: >
+      python3 generate_english_lowinktrain.py
+        --output_dir /app/en_lowinktrain_output
+        --total 2000
+        --font_size 32
+        --blur 0.3
+        --shard_size 500
+
   build_confusion_dataset:
     container_name: build_confusion_dataset
     image: trdg-test:latest
